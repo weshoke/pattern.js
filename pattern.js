@@ -1,5 +1,5 @@
 /*
- * pattern.js 0.7.0
+ * pattern.js 0.1.0
  *
  *
  * Copyright (c) 2013 Wesley Smith
