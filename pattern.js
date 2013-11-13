@@ -463,7 +463,7 @@ Pattern.prototype.matchRange = function(state, s) {
 }
 
 Pattern.prototype.matchGrammar = function(state, s) {
-	var root = this.v[1];
+	var root = this.v[0];
 	if(typeof root == "string") {
 		root = this.v[root];
 	}
@@ -863,7 +863,7 @@ var statement_list = (M.V("expression_statement").or(M.V("label_statement"))).an
 
 
 var patt = M.P({
-	1: "statement_list",
+	0: "statement_list",
 	statement_list: Rule(statement_list, "statement_list"),
 	label_statement: Rule(label_statement, "label_statement"),
 	expression_statement: Rule(expression_statement, "expression_statement"),
@@ -934,7 +934,7 @@ Interpreter.prototype.eval = function(ast) {
 		}
 		grammar[name] = def.match;
 	}
-	grammar[1] = "root";
+	grammar[0] = "root";
 	var patt = M.P(grammar);
 	return patt;
 }
