@@ -27,12 +27,12 @@ The __P__ rule can take a range of different argument types.  Depending on the a
 ### Pattern Operators ###
 Pattern operators transform and compose pattern primitives and composites.  The operators are:
 
-* __and__(p1, p2): sequence, matches __p1__ *followed by* __p2__
-* __or__(p1, p2): ordered choice, matches __p1__ if succesful else matches __p2__
-* __rep__(p, n) where n>=0: matches __n__ *or more* repetitions of pattern __p__
-* __rep__(p, -n) where n>0: matches *at most* __n__ repetitions of pattern __p__
-* __sub__(p1, p2): set difference, matches only if __p1__ matches and __p2_ *doesn't* match
-* __invert(p)__: set inversion, matches only if __p__ *doesn't* match
+* and(p1, p2): sequence, matches __p1__ *followed by* __p2__
+* or(p1, p2): ordered choice, matches __p1__ if succesful else matches __p2__
+* rep(p, n) where n>=0: matches __n__ *or more* repetitions of pattern __p__
+* rep(p, -n) where n>0: matches *at most* __n__ repetitions of pattern __p__
+* sub(p1, p2): set difference, matches only if __p1__ matches and __p2_ *doesn't* match
+* invert(p): set inversion, matches only if __p__ *doesn't* match
 
 ### Grammars ###
 In addition to the basic operators, patterns can be composed into inter-dependent rule networks, forming a grammar.  Grammars are composed of rule definitions where each definition is a pattern.  Rule definitions can reference other named rules through the rule operator __V__.  __V__ references other grammar rules by name and behaves just like other pattern primitives.
