@@ -16,13 +16,31 @@ The set of pattern generating functions closely follows the LPEG interface.  The
 * S: Matches a set of characters
 * R: Matches a range of characters
 
-The __P__ rule can take a range of different argument types.  Depending on the argument type, __P__ will have slightly different behavior:
+The __P__ pattern can take a range of different argument types.  Depending on the argument type, __P__ will have slightly different behavior:
 
 * P(true): Always matches, doesn't consume input
 * P(false): Never matches
 * P(n) where n>=0: Match exactly *n* characters
 * P(-n) where n>0: Match only if there are less than *n* characters left
 * P(object): Create a grammar from *object*, see [Grammars]
+
+The __S__ pattern matches a set of characters.  The characters are given by a string argument:
+
+* S(string): Match any character in __string__
+
+```js
+S("abc") // match 'a', 'b', or 'c'
+```
+
+The __R__ pattern matches ranges of characters.  The ranges are specified by two character strings.
+
+* R(string): Match the range of characters __string[0]__ to __string[1]__
+* R(array): Match characters in the ranges provided by __array__
+
+```js
+R("az") // match lower-case letters
+R(["az", "AZ"]) // match upper- and lower-case letters
+```
 
 ### Pattern Operators ###
 Pattern operators transform and compose pattern primitives and composites.  The operators are:
