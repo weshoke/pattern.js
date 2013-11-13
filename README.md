@@ -31,7 +31,7 @@ Pattern operators transform and compose pattern primitives and composites.  The 
 * or(p1, p2): ordered choice, matches __p1__ if succesful else matches __p2__
 * rep(p, n) where n>=0: matches __n__ *or more* repetitions of pattern __p__
 * rep(p, -n) where n>0: matches *at most* __n__ repetitions of pattern __p__
-* sub(p1, p2): set difference, matches only if __p1__ matches and __p2_ *doesn't* match
+* sub(p1, p2): set difference, matches only if __p1__ matches and __p2__ *doesn't* match
 * invert(p): set inversion, matches only if __p__ *doesn't* match
 
 ### Grammars ###
