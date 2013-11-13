@@ -82,6 +82,13 @@ State.prototype.printNamedCaptures = function() {
 	console.log("\n");
 }
 
+State.prototype.printCaptures = function() {
+	console.log(this.cindent()+this.capturesStack.length, this.captures);
+	for(var i=this.capturesStack.length-1; i >= 0; --i) {
+		console.log(this.cindent()+i, this.capturesStack[i]);
+	}
+}
+
 State.prototype.makeSubstitution = function(v, sidx) {
 	var res = "";
 	var idx = 0;
@@ -120,14 +127,16 @@ State.prototype.popCaptures = function() {
 	var popped = this.namedCaptures;
 	this.captures = this.capturesStack.pop();
 	this.namedCaptures = this.namedCaptureStack.pop();
-	//console.log(this.cindent()+"popped:", popped);
+	//console.log(this.cindent()+"popped:");
 	//this.printNamedCaptures();
+	//this.printCaptures();
 }
 
 State.prototype.mergeAndPopCaptures = function(reverse) {
 	//--this.cdepth;
 	//console.log(this.cindent()+"mergeAndPopCaptures:", this.capturesStack.length);
 	//console.log(this.cindent()+"***mergeAndPopCaptures:", this.namedCaptures);
+	//this.printCaptures();
 	//this.printNamedCaptures();
 	
 	if(reverse) this.captures = this.capturesStack.pop().concat(this.captures);
@@ -189,7 +198,7 @@ var Pattern = function(v, opcode) {
 			this.opcode = opcodes.GRAMMAR;
 		}
 		else {
-			console.error("XXX");
+			console.error("XXX", x, typeof x);
 		}
 	}
 }
@@ -375,10 +384,13 @@ Pattern.prototype.matchRep = function(state, s) {
 Pattern.prototype.matchAnd = function(state, s) {
 	//console.log("AND:", this.v.p1.match_(state, s), this.v.p2.match_(state, s));
 	var sidx = state.idx;
+	state.pushCaptures();
 	if(this.v.p1.match_(state, s) && this.v.p2.match_(state, s)) {
+		state.mergeAndPopCaptures(true);
 		return true;
 	}
 	else {
+		state.popCaptures();
 		state.resetPosition(sidx);
 		return false;
 	}
@@ -386,10 +398,13 @@ Pattern.prototype.matchAnd = function(state, s) {
 
 Pattern.prototype.matchOr = function(state, s) {
 	var sidx = state.idx;
+	state.pushCaptures();
 	if(this.v.p1.match_(state, s) || this.v.p2.match_(state, s)) {
+		state.mergeAndPopCaptures(true);
 		return true;
 	}
 	else {
+		state.popCaptures();
 		state.resetPosition(sidx);
 		return false;
 	}
@@ -466,13 +481,20 @@ Pattern.prototype.matchRule = function(state, s) {
 	var patt = state.env[state.env.length-1][this.v];
 	//console.log(state.indent()+"rule: " + this.v);
 	var sidx = state.idx;
+	
+	if(!patt) throw "rule '"+this.v+"' not found in grammar";
+	
 	if(patt.match_(state, s)) {
 		//console.log(state.indent()+"matchRule:", this.v, true, state.idx);
+		//state.printCaptures();
+		//console.log("\n");
 		return true;
 	}
 	else {
 		state.resetPosition(sidx);
 		//console.log(state.indent()+"matchRule:", this.v, false, state.idx);
+		//state.printCaptures();
+		//console.log("\n");
 		return false;
 	}
 }
@@ -522,6 +544,8 @@ Pattern.prototype.matchTable = function(state, s) {
 		return true;
 	}
 	else {
+		//console.log(state.indent()+"Ct failed");
+		//state.printCaptures();
 		state.popCaptures();
 		return false;
 	}
@@ -649,8 +673,7 @@ Pattern.prototype.matchSubstitute = function(state, s) {
 	}
 }
 
-
-return {
+var M = {
 	P: function(v, opcode) {
 		return new Pattern(v, opcode);
 	},
@@ -731,6 +754,369 @@ return {
 		return new Pattern(patt, opcodes.SUBSTITUTE);
 	}
 };
+
+/* Built-in patterns
+*/
+var space = M.S(" \t\r\n");
+var whitespace = space.rep(0);
+var nonzero = M.R("19");
+var zero = M.P("0");
+var digit = M.R("09");
+var char = M.R(["az", "AZ"]);
+var idchar = char.or("_");
+var hexadecimalDigit = M.R(["09", "af", "AF"]);
+var bool = M.P("false").or(M.P("true"));
+var integer = M.P("-").rep(-1).and(zero.or(nonzero.and(digit.rep(0))));
+var fractional = digit.rep(0);
+var scientific = M.S("eE").and(M.S("-+").rep(-1)).and(fractional);
+var float = M.P("-").rep(-1).and(
+	M.P(".").and(fractional).or(integer.and(M.P(".")).and(fractional.rep(-1)).and(scientific.rep(-1)))
+);
+var stringEscapes = M.P("\\\"").or(M.P("\\\\")).or(M.P("\\b"))
+	.or(M.P("\\f")).or(M.P("\\n")).or(M.P("\\r")).or(M.P("\\t"))
+	.or(
+		M.P("\\u").and(digit).and(digit).and(digit).and(digit)
+	);
+var string = M.P('"').and(
+	stringEscapes.or(M.P('"').invert()).rep(0)
+	//M.P('"').invert().rep(0)
+).and(M.P('"'));
+var singleQuoteString = M.P("'").and(
+	stringEscapes.or(M.P("\\'")).or(M.P("'").invert()).rep(0)
+).and(M.P("'"));
+var identifier = idchar.and(idchar.or(digit).rep(0));
+
+M.patterns = {
+	space: space,
+	whitespace: whitespace,
+	nonzero: nonzero,
+	zero: zero,
+	digit: digit,
+	char: char,
+	idchar: idchar,
+	hexadecimalDigit: hexadecimalDigit,
+	bool: bool,
+	integer: integer,
+	fractional: fractional,
+	scientific: scientific,
+	float: float,
+	string: string,
+	singleQuoteString: singleQuoteString,
+	stringEscapes: stringEscapes,
+	identifier: identifier
+};
+
+
+/* Pattern utility functions
+*/
+var field = function(k, v) {
+	return M.Cg(M.Cc(v), k);
+}
+
+var tag = function(patt, k, v) {
+	return patt.and(field(k, v));
+}
+
+var Token = function(patt, name) {
+	if(name) return M.Ct(tag(M.C(patt), "token", name));
+	else return M.P(patt);
+}
+
+var Rule = function(patt, name) {
+	return M.Ct(tag(patt, "rule", name));
+}
+
+
+/* The grammar for parsing .pattern files
+*/
+var ws = whitespace
+var singleQuote = M.P("'");
+var doubleQuote = M.P('"');
+
+var literal = M.V("number").or(M.V("doubleQuoteString")).or(M.V("singleQuoteString")).or(M.V("bool"));
+var subexpression = M.P("(").and(ws).and(M.V("additive_expression")).and(ws).and(M.P(")"));
+var primary_value = M.V("subexpression").or(M.V("identifier")).or(M.V("literal"));
+var function_args = (M.P("(").and(ws).and(
+	(M.V("primary_value").and(ws).and( M.P(",").and(ws).and(M.V("primary_value").and(ws)).rep(0) )).rep(-1)
+).and(M.P(")"))).or(M.V("singleQuoteString").or(M.V("doubleQuoteString")));
+var function_call = M.V("identifier").and(M.V("function_args")).or(M.V("primary_value"));
+
+var repetition_expression = M.V("function_call").and(
+	ws.and(M.C(M.P("^"))).and(ws).and(M.V("number")).rep(0)
+);
+
+var and_expression = M.V("repetition_expression").and(
+	ws.and(M.C(M.P("*"))).and(ws).and(M.V("repetition_expression")).rep(0)
+);
+
+var additive_expression = M.V("and_expression").and(
+	ws.and(M.C(M.P("+").or(M.P("-")))).and(ws).and(M.V("and_expression")).rep(0)
+);
+
+var assignment_expression = M.V("identifier").and(
+	ws.and(M.C(M.P("="))).and(ws).and(M.V("additive_expression")).rep(0)
+);
+
+var expression_statement = M.V("assignment_expression").and(ws).and(M.P(";"));
+var label_statement = M.V("identifier").and(M.P(":"));
+var statement_list = (M.V("expression_statement").or(M.V("label_statement"))).and(ws).rep(0);
+
+
+var patt = M.P({
+	1: "statement_list",
+	statement_list: Rule(statement_list, "statement_list"),
+	label_statement: Rule(label_statement, "label_statement"),
+	expression_statement: Rule(expression_statement, "expression_statement"),
+	assignment_expression: Rule(assignment_expression, "assignment_expression"),
+	additive_expression: Rule(additive_expression, "additive_expression"),
+	and_expression: Rule(and_expression, "and_expression"),
+	repetition_expression: Rule(repetition_expression, "repetition_expression"),
+	function_call: Rule(function_call, "function_call"),
+	function_args: Rule(function_args, "function_args"),
+	primary_value: Rule(primary_value, "primary_value"),
+	subexpression: Rule(subexpression, "subexpression"),
+	literal: literal,
+	identifier: Token(identifier, "identifier"),
+	number: Token(integer, "number"),
+	doubleQuoteString: Token(string, "doubleQuoteString"),
+	singleQuoteString: Token(singleQuoteString, "singleQuoteString"),
+	bool: Token(bool, "bool"),
+});
+
+var evalPattern = function(code) {
+	var ast = patt.match(code);
+	if(ast) {
+		return ast[0];
+	}
+};
+
+var assert = function(v, msg) {
+	if(!v) throw msg;
+	return v;
+}
+
+
+function Interpreter() {
+	this.definitions = {};
+	this.currentCategory = "anonymous";
+	this.code = [];
+}
+
+Interpreter.prototype.getCategory = function(name) {
+	if(!this.categories[name]) this.categories[name] = {};
+	return this.categories[name];
+}
+
+Interpreter.prototype.registerDefinition = function(name, pattern) {
+	var def = {
+		name: name,
+		pattern: pattern,
+		category: this.currentCategory
+	};
+	this.definitions[name] = def;
+}
+
+Interpreter.prototype.eval = function(ast) {
+	this.dispatch(ast);
+	var grammar = {};
+	for(var k in M.patterns) {
+		grammar[k] = M.patterns[k];
+	}
+	
+	for(var name in this.definitions) {
+		var def = this.definitions[name];
+		this.currentCategory = def.category;
+		if(def.category == "tokens") {
+			def.match = Token(this.dispatch(def.pattern), name);
+		}
+		else if(def.category == "rules") {
+			def.match = Rule(this.dispatch(def.pattern), name);
+		}
+		grammar[name] = def.match;
+	}
+	grammar[1] = "root";
+	var patt = M.P(grammar);
+	return patt;
+}
+
+Interpreter.prototype.makePattern = function(ast) {
+	if(ast.rule) {
+		return this[ast.rule].call(this, ast);
+	}
+	else if(ast.token) {
+		if(ast.token == "doubleQuoteString" || ast.token == "singleQuoteString") {
+			return ast[0].substring(1, ast[0].length-1);
+		}
+		else if(ast.token == "identifier") {
+			return M.V(ast[0]);
+		}
+		else if(ast.token == "number") {
+			return parseInt(ast[0]);
+		}
+		else if(ast.token == "bool") {
+			return ast[0] == "true";
+		}
+	}
+}
+
+Interpreter.prototype.dispatch = function(ast) {
+	if(ast.rule) {
+		return this[ast.rule].call(this, ast);
+	}
+	else if(ast.token) {
+		return ast;
+	}
+}
+
+Interpreter.prototype.dispatchList = function(ast) {
+	if(ast.rule) {
+		for(var i=0; i < ast.length; ++i) {
+			var node = ast[i];
+			this[node.rule].call(this, node);
+		}
+	}
+	else if(ast.token) {
+		return ast;
+	}
+}
+
+Interpreter.prototype.statement_list = function(ast) {
+	this.dispatchList(ast);
+}
+
+Interpreter.prototype.label_statement = function(ast) {
+	var name = this.dispatch(ast[0]);
+	assert(name.token && name.token == "identifier", "identifier expected");
+	this.currentCategory = name[0];
+}
+
+Interpreter.prototype.expression_statement = function(ast) {
+	var expr = this.dispatch(ast[0]);
+	this.registerDefinition(expr.name, expr.pattern);
+}
+
+Interpreter.prototype.assignment_expression = function(ast) {
+	var name = this.dispatch(ast[0]);
+	assert(name.token && name.token == "identifier", "identifier expected");
+	
+	return {
+		name: name[0],
+		pattern: ast[2]
+	};
+}
+
+Interpreter.prototype.additive_expression = function(ast) {
+	var res = undefined;
+	for(var i=0; i < ast.length; i += 2) {
+		if(!res) res = this.makePattern(ast[i]);
+		else res = res.or(this.makePattern(ast[i]));
+	}
+	return res;
+}
+
+Interpreter.prototype.and_expression = function(ast) {
+	var res = undefined;
+	for(var i=0; i < ast.length; i += 2) {
+		if(!res) res = this.makePattern(ast[i]);
+		else {
+			if(this.currentCategory == "rules") {
+				res = res.and(ws).and(this.makePattern(ast[i]));
+			}
+			else {
+				res = res.and(this.makePattern(ast[i]));
+			}
+		}
+	}
+	return res;
+}
+
+Interpreter.prototype.repetition_expression = function(ast) {
+	if(ast.length >= 2) {
+		var patt = this.makePattern(ast[0]);
+		var n = this.makePattern(ast[2]);
+		if(this.currentCategory == "rules") {
+			return patt.and(ws).rep(n);
+		}
+		else {
+			return patt.rep(n);
+		}
+	}
+	else {
+		return this.makePattern(ast[0]);
+	}
+}
+
+Interpreter.prototype.function_call = function(ast) {
+	if(ast.length >= 2) {
+		var name = this.dispatch(ast[0]);
+		assert(name.token && name.token == "identifier", "identifier expected");
+		var args = this.makePattern(ast[1]);
+		
+		var fname = name[0];
+		if(fname == "T") {
+			return Token(args[0]);
+		}
+		else {
+			assert(M[fname], "invalid function name '"+fname+"'");
+			return M[fname].apply(M, args);
+		}
+	}
+	else {
+		return this.makePattern(ast[0]);
+	}
+}
+
+Interpreter.prototype.function_args = function(ast) {
+	var res = [];
+	for(var i=0; i < ast.length; ++i) res[i] = this.makePattern(ast[i]);
+	return res;
+}
+
+Interpreter.prototype.primary_value = function(ast) {
+	return this.makePattern(ast[0]);
+}
+
+Interpreter.prototype.subexpression = function(ast) {
+	return this.makePattern(ast[0]);
+}
+
+
+M.create = function(def) {
+	var ast = evalPattern(def);
+	var interpreter = new Interpreter();
+	return interpreter.eval(ast);
+}
+
+
+
+var indent = function(n) {
+	var res = "";
+	for(var i=0; i < n; ++i) res += "  ";
+	return res;
+}
+
+var printAST = function(ast, lvl, name) {
+	if(!lvl) lvl = 0;
+	if(name) console.log(indent(lvl)+name+" = {");
+	else console.log(indent(lvl)+"{");
+	
+	if(ast.rule) console.log(indent(lvl+1)+"rule = "+ast.rule+",");
+	else console.log(indent(lvl+1)+"token = "+ast.token+",");
+	for(var i=0; i < ast.length; i++) {
+		var v = ast[i];
+		if(typeof v == "object") {
+			printAST(v, lvl+1);
+		}
+		else {
+			console.log(indent(lvl+1)+v+",");
+		}
+	}
+	console.log(indent(lvl)+"}");
+}
+
+M.printAST = printAST;
+
+return M;
 })();
 
 if(typeof module !== "undefined") {
