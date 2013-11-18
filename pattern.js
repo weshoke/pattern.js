@@ -427,10 +427,10 @@ Pattern.prototype.matchSet = function(state, s) {
 Pattern.prototype.matchRange = function(state, s) {
 	if(DEBUG) console.log(state.indent()+"matchRange");
 	
-	var rangeName = state.addStatic("range", this.v.toString());
+	var rangeName = state.createStatic("range", this.v.toString());
 	var code = [
 		"// Match range "+rangeName,
-		"if("+rangeName+".exec(s[this.idx])) {",
+		"if(s[this.idx] &&"+rangeName+".exec(s[this.idx])) {",
 		"	++this.idx;",
 		"	"+state.res+" = true;",
 		"}",
@@ -714,7 +714,7 @@ Pattern.prototype.matchGroup = function(state, s) {
 }
 
 Pattern.prototype.matchCstring = function(state, s) {
-	console.log(state.indent()+"matchCstring");
+	if(DEBUG) console.log(state.indent()+"matchCstring");
 	this.v.pattern.match_(state, s)
 }
 
