@@ -5,9 +5,17 @@
  * Copyright (c) 2013 Wesley Smith
  * Licensend under the MIT license.
  */
+ var fs = require('fs');
+ 
 var Pattern = (function(undefined) {
 
 var DEBUG = false;
+var CAP_DEBUG = false;
+
+var codegen_debug = function(v) {
+	if(CAP_DEBUG) return v;
+	else return "";
+}
 
 // setup
 var opnames = [
@@ -43,6 +51,9 @@ var CodeState = function() {
 	
 	// statically defined values (strings, sets, ranges, grammars)
 	this.statics = {};
+	this.staticDefs = {};
+	
+	this.reps = {};
 	
 	// match results
 	this.res = this.makeUID();
@@ -65,6 +76,14 @@ var CodeState = function() {
 	this.grammarStack = [];	// stack of grammars in flight
 }
 
+CodeState.prototype.registerRep = function(name, pattern) {
+	this.reps[pattern.id] = name;
+}
+
+CodeState.prototype.getRep = function(pattern) {
+	return this.reps[pattern.id];
+}
+
 CodeState.prototype.makeUID = function(name) {
 	name = name||"res";
 	return name+(++this.uid);
@@ -77,9 +96,15 @@ CodeState.prototype.indent = function() {
 }
 
 CodeState.prototype.createStatic = function(name, code) {
-	var nameUID = this.makeUID(name);
-	this.addStatic(nameUID, code);
-	return nameUID;
+	if(this.staticDefs[code]) {
+		return this.staticDefs[code];
+	}
+	else {
+		var nameUID = this.makeUID(name);
+		this.addStatic(nameUID, code);
+		this.staticDefs[code] = nameUID;
+		return nameUID;
+	}
 }
 
 CodeState.prototype.addStatic = function(name, code) {
@@ -103,13 +128,24 @@ CodeState.prototype.push = function(name) {
 	this.currentDef = [];
 }
 
-CodeState.prototype.pop = function(name) {
-	this.defs[this.currentDefName] = {
-		def: this.currentDef,
-		name: name
-	};
+CodeState.prototype.pop = function(name, grammar) {
+	if(grammar && grammar != this.currentGrammarName) {
+		for(var i=this.grammarNameStack.length-1; i >= 0; --i) {
+			if(grammar == this.grammarNameStack[i]) {
+				this.grammarStack[i][this.currentDefName] = {
+					def: this.currentDef,
+					name: name
+				};
+			}
+		}
+	}
+	else {
+		this.defs[this.currentDefName] = {
+			def: this.currentDef,
+			name: name
+		};
+	}
 	this.currentDef = this.defStack.pop();
-	
 	this.currentDefName = this.defNameStack.pop();
 }
 
@@ -144,12 +180,14 @@ CodeState.prototype.pushRules = function(rules, name) {
 	this.grammarStack.push(this.defs);
 	this.defs = {};
 	this.push(0);
+	if(DEBUG) console.log(this.indent()+"*** push rules", this.ruleStack.length, rules);
 	return this.currentGrammarName;
 }
 
 CodeState.prototype.popRules = function(name, res) {
+	if(DEBUG) console.log(this.indent()+"*** pop rules", this.ruleStack.length, name);
 	this.pop(res);
-	this.rules = this.ruleStack.pop();
+	
 	for(var rule in this.defs) {
 		var def = this.defs[rule];
 		var code = def.def;
@@ -165,7 +203,26 @@ CodeState.prototype.popRules = function(name, res) {
 }
 
 CodeState.prototype.getRule = function(name) {
-	return this.rules[name];
+	if(DEBUG) console.log(this.indent()+"*** getRule", this.ruleStack.length);
+	var pattern = this.rules[name];
+	var grammar = this.currentGrammarName;
+	if(this.currentGrammarName.substring(0, 7) != "grammar") {
+		var idx = this.grammarNameStack.length-1;
+		while(!pattern && idx >= 0) {
+			pattern = this.ruleStack[idx][name];
+			grammar = this.grammarNameStack[idx];
+			if(pattern) break;
+			
+			if(this.grammarNameStack[idx].substring(0, 7) == "grammar") {
+				break;
+			}
+			--idx;
+		}
+	}
+	return {
+		pattern: pattern,
+		grammar: grammar
+	};
 }
 
 CodeState.prototype.ruleName = function(name, rule) {
@@ -178,6 +235,8 @@ CodeState.prototype.generate = function() {
 		"	this.idx = 0;",
 		"	this.captures = [];",
 		"	this.captureStack = [];",
+		"	this.namedCaptures = {};",
+		"	this.namedCaptureStack = [];",
 	];
 	for(var k in this.statics) {
 		var code = this.statics[k];
@@ -190,22 +249,75 @@ CodeState.prototype.generate = function() {
 	}
 	preamble.push("this.match = function(s) {");
 	var code = preamble.concat(this.currentDef);
+	code.push("	if(!"+this.res+") this.resetCaptures();");
 	code.push("	return "+this.res+";");
 	code.push("};");
 	
 	var body = [
 		"this.pushCaptures = function() {",
+		codegen_debug("	console.log('pushCaptures', this.captures);"),
 		"	this.captureStack.push(this.captures);",
 		"	this.captures = [];",
+		"	this.namedCaptureStack.push(this.namedCaptures);",
+		"	this.namedCaptures = {};",
 		"}",
 		"this.popCaptures = function() {",
+		codegen_debug("	console.log('popCaptures');"),
 		"	this.captures = this.captureStack.pop();",
+		"	this.namedCaptures = this.namedCaptureStack.pop();",
 		"}",
 		"this.mergeAndPopCaptures = function() {",
-		"	this.captures = this.captureStack.pop().concat(this.captures);",
+		codegen_debug("	console.log('merge:', this.captureStack[this.captureStack.length-1], this.captures);"),
+		"	var captures = this.captures;",
+		"	this.captures = this.captureStack.pop().concat(captures);",
+		"	for(var name in captures) {",
+		"		var idx = parseInt(name);",
+		"		if(isNaN(idx)) {", // || idx >= captures.length) {",
+		"			this.captures[name] = captures[name];",
+		"		}",
+		"	}",
+		"",
+		
+		"	var namedCaptures = this.namedCaptures;",
+		"	this.namedCaptures = this.namedCaptureStack.pop();",
+		"	for(var name in namedCaptures) {",
+		"		this.namedCaptures[name] = namedCaptures[name];",
+		"	}",
+		"}",
+		// TODO: track indices of captures for better merging
+		"this.captureTable = function(idx) {",
+		codegen_debug("	console.log('captureTable', idx, this.captures);"),
+		"	for(var name in this.namedCaptures) {",
+		codegen_debug("		console.log('add named capture:', name);"),
+		"		this.captures[name] = this.namedCaptures[name];",
+		"	}",
+		"	this.namedCaptures = {};",
+		"	if(idx > 0) {",
+		"		var removed = this.captures.splice(0, idx);",
+		"		removed[removed.length] = this.captures;",
+		"		this.captures = removed;",
+		"	}",
+		"	else {",
+		"		this.captures = [this.captures];",
+		"	}",
+		"}",
+		"this.captureGroup = function(name) {",
+		codegen_debug("	console.log('captureGroup', name, this.captures);"),
+		"	if(name) {",
+		"		this.namedCaptures[name] = this.captures;",
+		"		this.captures = [];",
+		"	}",
 		"}",
 		"this.appendCapture = function(v) {",
+		codegen_debug("	console.log('appendCapture', v);"),
 		"	this.captures.push(v);",
+		"}",
+		"this.prependCapture = function(v) {",
+		codegen_debug("	console.log('prependCapture', v);"),
+		"	this.captures.unshift(v);",
+		"}",
+		"this.resetCaptures = function(v) {",
+		"	this.captures = [];",
 		"}",
 	];
 	code = code.concat(body);
@@ -219,15 +331,21 @@ CodeState.prototype.create = function() {
 	var matchCode = this.generate();
 	if(DEBUG) console.log(matchCode);
 	var code = [matchCode].concat(["return Parser;"]).join("\n");
-	//console.log(code);
-	return (new Function(code))();
-	//res.match = new Function(matchCode)();
-	//return res;
+	return (new Function(code))();;
 }
 
+CodeState.prototype.save = function(filename) {
+	var matchCode = this.generate();
+	fs.writeFile(filename, matchCode, function(err) {
+		if(err) console.log(err);
+		else console.log("File '"+filename+"'");
+	}); 
+}
 
+var _patterUID = 0;
 var Pattern = function(v, opcode) {
 	this.v = v;
+	this.id = (++_patterUID);
 	if(opcode) {
 		this.opcode = opcode;
 	}
@@ -299,12 +417,19 @@ Pattern.prototype.ignore = function() {
 	return new Pattern(this, opcodes.IGNORE);
 }
 
-Pattern.prototype.eval = function(s) {
+Pattern.prototype.eval = function() {
 	var state = new CodeState();
 	state.appendResDeclaration();
-	this.match_(state, s);
+	this.match_(state);
 	if(DEBUG) console.log("-----------------------------");
 	return state.create();
+}
+
+Pattern.prototype.save = function(filename) {
+	var state = new CodeState();
+	state.appendResDeclaration();
+	this.match_(state);
+	return state.save(filename);
 }
 
 Pattern.prototype.match_ = function(state, s) {
@@ -344,9 +469,15 @@ Pattern.prototype.match_ = function(state, s) {
 
 Pattern.prototype.matchString = function(state, s) {
 	if(DEBUG) console.log(state.indent()+"matchString");
-	var length = this.v.length;
+
+	var v = this.v.replace(/\\/g, "\\\\");
+	v = v.replace(/'/g, "\\'");
+	//console.log("str:", this.v, this.v.length, v, v.length);
+	var str = eval("'"+v+"'");
+	//console.log("\t"+str, str.length);
+	var length = str.length;
 	
-	var string = state.createStatic("string", "'"+this.v+"'");
+	var string = state.createStatic("string", "'"+v+"'");
 	var i = state.makeUID("i");
 	var code = [
 		"// Match "+string,
@@ -447,29 +578,39 @@ Pattern.prototype.matchAnd = function(state, s) {
 	
 	state.append(["// Match p1*p2"]);
 	var sidx = state.makeUID("sidx");
-	state.append(["var "+sidx+" = this.idx;"]);
+	state.append([
+		"var "+sidx+" = this.idx;",
+		"this.pushCaptures();",
+	]);
+	
+	// First patttern in sequence
 	state.pushRes();
-	var res1 = state.res;
-	state.appendResDeclaration();
-	this.v.p1.match_(state, s)
+		var res1 = state.res;
+		state.appendResDeclaration();
+		this.v.p1.match_(state, s)
 	state.popRes();
 	
-	
+	// Second pattern in sequence
 	state.pushRes();
-	var res2 = state.res;
-	state.appendResDeclaration();
-	
-	state.append(["if("+res1+") {"]);
-	++state.depth;
-	this.v.p2.match_(state, s)
-	--state.depth;
-	state.append(["}"]);
-	
+		var res2 = state.res;
+		state.appendResDeclaration();		
+		state.append(["if("+res1+") {"]);
+		++state.depth;
+			this.v.p2.match_(state, s)
+		--state.depth;
+		state.append(["}"]);
 	state.popRes();
 	
+	// Result
 	state.append([
 		state.res+" = "+res1+" && "+res2+";",
-		"if(!"+state.res+") this.idx = "+sidx+";"
+		"if("+state.res+") {",
+		"	this.mergeAndPopCaptures();",
+		"}",
+		"else {",
+		"	this.idx = "+sidx+";",
+		"	this.popCaptures();",
+		"}"
 	]);
 }
 
@@ -514,17 +655,24 @@ Pattern.prototype.matchRep = function(state, s) {
 	var sidx = state.makeUID("sidx");
 	state.append(["var "+sidx+" = this.idx;"]);
 
-	// Generate the repeated rule
-	var depth = state.depth;
-	state.depth = 1;
-	var rule = state.pushRules({}, "rep");
-		state.pushRes();
-			var res = state.res;
-			state.appendResDeclaration();
-			this.v.pattern.match_(state, s);
-		state.popRes();
-	state.popRules(rule, res);
-	state.depth = depth;
+	var rule = undefined;
+	if(!state.getRep(this.v.pattern)) {
+		// Generate the repeated rule
+		var depth = state.depth;
+		state.depth = 1;
+		rule = state.pushRules({}, "rep");
+			state.pushRes();
+				var res = state.res;
+				state.appendResDeclaration();
+				this.v.pattern.match_(state, s);
+			state.popRes();
+		state.popRules(rule, res);
+		state.depth = depth;
+		state.registerRep(rule, this.v.pattern);
+	}
+	else {
+		rule = state.getRep(this.v.pattern);
+	}
 	
 	if(this.v.rep > 0) {
 		var i = state.makeUID("i");
@@ -645,6 +793,7 @@ Pattern.prototype.matchGrammar = function(state, s) {
 			root.match_(state, s);
 		state.popRes();
 	state.popRules(grammar, res);
+	if(DEBUG) console.log(state.indent()+"Grammar done");
 	state.depth = depth;
 	
 	state.append([
@@ -655,9 +804,10 @@ Pattern.prototype.matchGrammar = function(state, s) {
 
 Pattern.prototype.matchRule = function(state, s) {
 	// Check if the rule has already been defined or is being defined
+	if(DEBUG) console.log(state.indent()+"matchRule '"+this.v+"'");
+	var rule = state.getRule(this.v);
 	if(!(state.defIsInFlight(this.v) || state.defExists(this.v))) {
-		if(DEBUG) console.log(state.indent()+"matchRule '"+this.v+"'");
-		var pattern = state.getRule(this.v);
+		if(!rule.pattern) console.error("Grammar has no definition for '"+this.v+"'");
 		
 		// Generate the rule
 		var depth = state.depth;
@@ -666,18 +816,20 @@ Pattern.prototype.matchRule = function(state, s) {
 			state.pushRes();
 				var res = state.res;
 				state.appendResDeclaration();
-				pattern.match_(state, s);	
+				rule.pattern.match_(state, s);	
 			state.popRes();
-		state.pop(res);
+		state.pop(res, rule.grammar);
 		state.depth = depth;
 	}
 	
 	// Call the rule's pattern
 	var sidx = state.makeUID("sidx");
 	state.append([
+		codegen_debug("console.log('-----> match rule:', '"+this.v+"', this.captures);"),
 		"var "+sidx+" = this.idx;",
-		state.res+" = this."+state.ruleName(state.currentGrammarName, this.v)+"(s);",
-		"if(!"+state.res+") this.idx = "+sidx+";"
+		state.res+" = this."+state.ruleName(rule.grammar, this.v)+"(s);",
+		"if(!"+state.res+") this.idx = "+sidx+";",
+		codegen_debug("console.log('<----- match rule:', "+state.res+", '"+this.v+"', this.captures);"),
 	]);
 }
 
@@ -685,17 +837,21 @@ Pattern.prototype.matchCapture = function(state, s) {
 	if(DEBUG) console.log(state.indent()+"matchCapture");
 	
 	var sidx = state.makeUID("sidx");
+	var cap = state.makeUID("cap");
+	var capidx = state.makeUID("capidx");
 	state.append([
-		"// Match capture",
+		"// Capture",
 		"var "+sidx+" = this.idx;",
+		"var "+capidx+" = this.captures.length;",
 		"this.pushCaptures();",
 	]);
 	this.v.match_(state, s)
 	state.append([
 		"if("+state.res+") {",
-		"	var cap = s.substring("+sidx+", this.idx);",
-		"	this.appendCapture(cap);",
-		"	this.mergeAndPopCaptures(true);",
+		"	var "+cap+" = s.substring("+sidx+", this.idx);",
+		"	this.mergeAndPopCaptures();",
+		//"	console.log(this.captures.length, "+capidx+", this.captures);",
+		"	this.captures.splice("+capidx+", 0, "+cap+");",
 		"}",
 		"else {",
 		"	this.popCaptures();",
@@ -703,14 +859,58 @@ Pattern.prototype.matchCapture = function(state, s) {
 	]);
 }
 
+Pattern.prototype.matchPosition = function(state, s) {
+	if(DEBUG) console.log(state.indent()+"matchPosition");
+	state.append([
+		"// Capture position",
+		state.res+" = true;",
+		"this.appendCapture(this.idx);"
+	]);
+}
+
+Pattern.prototype.matchConstant = function(state, s) {
+	if(DEBUG) console.log(state.indent()+"matchConstant");
+	
+	var v;
+	if(typeof this.v == "string") v = "'"+this.v+"'";
+	else v = this.v;
+	state.append([
+		"// Capture constant '"+this.v+"'",
+		state.res+" = true;",
+		"this.appendCapture("+v+");"
+	]);
+}
+
 Pattern.prototype.matchTable = function(state, s) {
-	console.log(state.indent()+"matchCapture");
+	if(DEBUG) console.log(state.indent()+"matchTable");
+	var capidx = state.makeUID("capidx");
+	state.append([
+		"// Capture table",
+		"var "+capidx+" = this.captures.length;",
+	]);
 	this.v.match_(state, s);
+	state.append([
+		"if("+state.res+") this.captureTable("+capidx+");",
+	]);
 }
 
 Pattern.prototype.matchGroup = function(state, s) {
-	console.log(state.indent()+"matchGroup");
-	this.v.match_(state, s);
+	if(DEBUG) console.log(state.indent()+"matchGroup");
+	
+	state.append([
+		"// Capture group '"+this.v.name+"'",
+		"this.pushCaptures();",
+	]);
+	this.v.pattern.match_(state, s);
+	state.append([
+		"if("+state.res+") {",
+		"	this.captureGroup('"+this.v.name+"');",
+		"	this.mergeAndPopCaptures();",
+		"}",
+		"else {",
+		"	this.popCaptures("+state.res+");",
+		"}"
+	]);
 }
 
 Pattern.prototype.matchCstring = function(state, s) {
@@ -1229,7 +1429,6 @@ var M = {
 
 /* Built-in patterns
 */
-/*
 var space = M.S(" \t\r\n");
 var whitespace = space.rep(0);
 var nonzero = M.R("19");
@@ -1247,9 +1446,10 @@ var float = M.P("-").rep(-1).and(
 );
 var stringEscapes = M.P("\\\"").or(M.P("\\\\")).or(M.P("\\b"))
 	.or(M.P("\\f")).or(M.P("\\n")).or(M.P("\\r")).or(M.P("\\t"))
-	.or(
-		M.P("\\u").and(digit).and(digit).and(digit).and(digit)
-	);
+	//.or(
+	//	M.P("\\u").and(digit).and(digit).and(digit).and(digit)
+	//);
+	;
 var string = M.P('"').and(
 	stringEscapes.or(M.P('"').invert()).rep(0)
 	//M.P('"').invert().rep(0)
@@ -1278,11 +1478,11 @@ M.patterns = {
 	stringEscapes: stringEscapes,
 	identifier: identifier
 };
-*/
+
 
 /* Pattern utility functions
 */
-/*
+
 var field = function(k, v) {
 	return M.Cg(M.Cc(v), k);
 }
@@ -1299,11 +1499,9 @@ var Token = function(patt, name) {
 var Rule = function(patt, name) {
 	return M.Ct(tag(patt, "rule", name));
 }
-*/
 
 /* The grammar for parsing .pattern files
 */
-/*
 var ws = whitespace
 var singleQuote = M.P("'");
 var doubleQuote = M.P('"');
@@ -1337,8 +1535,10 @@ var label_statement = M.V("identifier").and(M.P(":"));
 var statement_list = (M.V("expression_statement").or(M.V("label_statement"))).and(ws).rep(0);
 
 
-var patt = M.P({
+var patternParser  = M.P({
 	0: "statement_list",
+	//0: "doubleQuoteString",
+	//0: "statement_list",
 	statement_list: Rule(statement_list, "statement_list"),
 	label_statement: Rule(label_statement, "label_statement"),
 	expression_statement: Rule(expression_statement, "expression_statement"),
@@ -1356,12 +1556,18 @@ var patt = M.P({
 	doubleQuoteString: Token(string, "doubleQuoteString"),
 	singleQuoteString: Token(singleQuoteString, "singleQuoteString"),
 	bool: Token(bool, "bool"),
-});
+}).and(-1)
+//.save(__dirname+"/grammar.pattern");
+.eval();
+
+
 
 var evalPattern = function(code) {
-	var ast = patt.match(code);
+	var parser = new patternParser();
+	//console.log(parser);
+	var ast = parser.match(code);
 	if(ast) {
-		return ast[0];
+		return parser.captures[0];
 	}
 };
 
@@ -1558,10 +1764,11 @@ Interpreter.prototype.subexpression = function(ast) {
 
 M.create = function(def) {
 	var ast = evalPattern(def);
+	//console.log(ast);
+	//printAST(ast);
 	var interpreter = new Interpreter();
 	return interpreter.eval(ast);
 }
-*/
 
 
 var indent = function(n) {
