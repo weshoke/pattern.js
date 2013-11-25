@@ -9,7 +9,7 @@
  
 var Pattern = (function(undefined) {
 
-var DEBUG = true;
+var DEBUG = false;
 var CAP_DEBUG = false;
 
 var codegen_debug = function(v) {
@@ -1305,7 +1305,7 @@ var patternParser  = M.P({
 	bool: Token(bool, "bool"),
 }).and(-1)
 //.save(__dirname+"/grammar.pattern");
-;//.eval();
+.eval();
 
 
 
