@@ -9,7 +9,7 @@
  
 var Pattern = (function(undefined) {
 
-var DEBUG = false;
+var DEBUG = true;
 var CAP_DEBUG = false;
 
 var codegen_debug = function(v) {
@@ -19,7 +19,7 @@ var codegen_debug = function(v) {
 
 // setup
 var opnames = [
-	"STRING", "NUMBER", "BOOL",
+	"STRING", "NUMBER", "BOOL", "OBJECT",
 	"SET", "RANGE",
 	"AND", "OR", "REP", "DIFFERENCE",
 	"IGNORE",
@@ -272,14 +272,28 @@ CodeState.prototype.generate = function() {
 		"	this.captures = this.captureStack.pop().concat(captures);",
 		"	for(var name in captures) {",
 		"		var idx = parseInt(name);",
-		"		if(isNaN(idx)) {", // || idx >= captures.length) {",
+		"		if(isNaN(idx)) {",
 		"			this.captures[name] = captures[name];",
 		"		}",
 		"	}",
 		"",
-		
 		"	var namedCaptures = this.namedCaptures;",
 		"	this.namedCaptures = this.namedCaptureStack.pop();",
+		"	for(var name in namedCaptures) {",
+		"		this.namedCaptures[name] = namedCaptures[name];",
+		"	}",
+		"}",
+		"this.mergeCapturesAtIndex = function(idx, captures, namedCaptures) {",
+		"	for(var i=captures.length-1; i >= 0; --i) {",
+		"		this.captures.splice(idx, 0, captures[i]);",
+		"	}",
+		"	for(var name in captures) {",
+		"		var idx = parseInt(name);",
+		"		if(isNaN(idx)) {",
+		"			this.captures[name] = captures[name];",
+		"		}",
+		"	}",
+		"",
 		"	for(var name in namedCaptures) {",
 		"		this.namedCaptures[name] = namedCaptures[name];",
 		"	}",
@@ -441,6 +455,7 @@ Pattern.prototype.match_ = function(state, s) {
 		case opcodes.STRING: res = this.matchString(state, s); break;
 		case opcodes.NUMBER: res = this.matchNumber(state, s); break;
 		case opcodes.BOOL: res = this.matchBool(state, s); break;
+		case opcodes.OBJECT: res = this.matchObject(state, s); break;
 		case opcodes.SET: res = this.matchSet(state, s); break;
 		case opcodes.RANGE: res = this.matchRange(state, s); break;
 		case opcodes.AND: res = this.matchAnd(state, s); break;
@@ -535,6 +550,98 @@ Pattern.prototype.matchBool = function(state, s) {
 	];
 	
 	state.append(code);
+}
+
+Pattern.prototype.matchObject = function(state, s) {
+	if(DEBUG) console.log(state.indent()+"matchBool");
+	
+	var prevS = state.makeUID("prevS");
+	if(typeof this.v.field == "object") {
+		var rule = this.getPatternRule(state, s, this.v.field);
+		var k = state.makeUID("k");
+		state.pushRes();
+		state.appendResDeclaration();
+		
+		var res = state.res;
+		var i = state.makeUID("i");
+		var tmp = state.makeUID("tmp");
+		var cidx = state.makeUID("cidx");
+		var sidx = state.makeUID("sidx");
+		var sidx2 = state.makeUID("sidx");
+		var keyCaptures = state.makeUID("keyCaptures");
+		var namedKeyCaptures = state.makeUID("namedKeyCaptures");
+		
+		state.pushRes();
+		state.append([
+			"// Match object using pattern",
+			//"console.log('indirect:', s);",
+			"if(typeof s === 'object' && s !== null) {",
+			"	for(var "+k+" in s) {",
+			"		var "+state.res+" = false;",
+			"		var "+cidx+" = this.captures.length;",
+			"		this.pushCaptures();",
+			"		var "+sidx+" = this.idx;",
+			"		this.idx = 0",
+			"		var "+tmp+" = this."+state.ruleName(rule, 0)+"("+k+");",
+			//"		console.log('\\n********\\ntmp:', "+tmp+");",
+			"		this.idx = "+sidx+";",
+			//"		console.log(this.captures, "+k+");",
+			"		var "+keyCaptures+" = this.captures;",
+			"		var "+namedKeyCaptures+" = this.namedCaptures;",
+			"		this.popCaptures();",
+			"		if("+tmp+") {",
+			"		var "+prevS+" = s;",
+			//"			console.log(this.captures);",
+			"			s = s["+k+"];",
+			//"			console.log("+k+");",
+			"			if(s !== undefined) {",
+			"				var "+sidx+" = this.idx;",
+			"				this.idx = 0",
+		]);
+		
+		state.depth += 3;
+		this.v.pattern.match_(state, s);
+		state.depth -= 3;
+		
+		state.append([
+			"				this.idx = "+sidx+";",
+			"			}",
+			//"			console.log('matched:', "+state.res+");",
+			"			s = "+prevS+";",
+			"		}",
+			"		if("+state.res+") {",
+			//"			console.log("+keyCaptures+", "+cidx+");",
+			"			this.mergeCapturesAtIndex("+cidx+", "+keyCaptures+", "+namedKeyCaptures+");",
+			"		}",
+			"		"+res+" = "+res+"||"+state.res+";",
+			"	}",
+			"}"
+		]);
+		state.popRes();
+		
+		state.popRes();
+		state.append([
+			state.res+" = "+res+";"
+		]);
+	}
+	else {
+		state.append([
+			"// Match object '"+this.v.field+"'",
+			//"console.log('\\ndirect "+this.v.field+":', s, typeof s);",
+			"if(typeof s === 'object' && s !== null) {",
+			"	var "+prevS+" = s;",
+			"	s = s['"+this.v.field+"'];",
+			"	if(s !== undefined) {"
+		]);
+		state.depth += 2;
+		this.v.pattern.match_(state, s);
+		state.depth -= 2;
+		state.append([
+			"	}",
+			"	s = "+prevS+";",
+			"}"
+		]);
+	}
 }
 
 Pattern.prototype.matchSet = function(state, s) {
@@ -649,12 +756,35 @@ Pattern.prototype.matchOr = function(state, s) {
 	]);
 }
 
+Pattern.prototype.getPatternRule = function(state, s, pattern) {
+	var rule = undefined;
+	if(!state.getRep(pattern)) {
+		// Generate the repeated rule
+		var depth = state.depth;
+		state.depth = 1;
+		rule = state.pushRules({}, "rep");
+			state.pushRes();
+				var res = state.res;
+				state.appendResDeclaration();
+				pattern.match_(state, s);
+			state.popRes();
+		state.popRules(rule, res);
+		state.depth = depth;
+		state.registerRep(rule, pattern);
+	}
+	else {
+		rule = state.getRep(pattern);
+	}
+	return rule;
+}
+
 Pattern.prototype.matchRep = function(state, s) {
 	if(DEBUG) console.log(state.indent()+"matchRep");
 	
 	var sidx = state.makeUID("sidx");
 	state.append(["var "+sidx+" = this.idx;"]);
 
+	/*
 	var rule = undefined;
 	if(!state.getRep(this.v.pattern)) {
 		// Generate the repeated rule
@@ -673,6 +803,8 @@ Pattern.prototype.matchRep = function(state, s) {
 	else {
 		rule = state.getRep(this.v.pattern);
 	}
+	*/
+	var rule = this.getPatternRule(state, s, this.v.pattern);
 	
 	if(this.v.rep > 0) {
 		var i = state.makeUID("i");
@@ -848,9 +980,20 @@ Pattern.prototype.matchCapture = function(state, s) {
 	this.v.match_(state, s)
 	state.append([
 		"if("+state.res+") {",
-		"	var "+cap+" = s.substring("+sidx+", this.idx);",
+		"	var "+cap+";",
+		"	if(typeof s == 'string') {",
+		"		"+cap+" = s.substring("+sidx+", this.idx);",
+		"	}",
+		"	else if(typeof s == 'object') {",
+		"		if(s.constructor === Array) {",
+		"			"+cap+" = s.slice("+sidx+", this.idx);",
+		"		}",
+		"		else {",
+		"			"+cap+" = s;",
+		"		}",
+		"	}",
 		"	this.mergeAndPopCaptures();",
-		//"	console.log(this.captures.length, "+capidx+", this.captures);",
+		//"	console.log('capture', s, this.captures.length, "+capidx+", this.captures);",
 		"	this.captures.splice("+capidx+", 0, "+cap+");",
 		"}",
 		"else {",
@@ -932,427 +1075,32 @@ Pattern.prototype.matchSubstitute = function(state, s) {
 	console.log(state.indent()+"matchSubstitute");
 }
 
-/*
-Pattern.prototype.match_ = function(state, s) {
-	++state.depth;
-	//console.log(state.indent()+(s[state.idx]), state.idx, opcodeNames[this.opcode]);
-	
-	var res;
-	switch(this.opcode) {
-		case opcodes.STRING: res = this.matchString(state, s); break;
-		case opcodes.NUMBER: res = this.matchNumber(state, s); break;
-		case opcodes.BOOL: res = this.matchBool(state, s); break;
-		case opcodes.REP: res = this.matchRep(state, s); break;
-		case opcodes.AND: res = this.matchAnd(state, s); break;
-		case opcodes.OR: res = this.matchOr(state, s); break;
-		case opcodes.SET: res = this.matchSet(state, s); break;
-		case opcodes.IGNORE: res = this.matchIgnore(state, s); break;
-		case opcodes.CAPTURE: res = this.matchCapture(state, s); break;
-		case opcodes.POSITION: res = this.matchPosition(state, s); break;
-		case opcodes.TABLE: res = this.matchTable(state, s); break;
-		case opcodes.CSTRING: res = this.matchCstring(state, s); break;
-		case opcodes.FUNCTION: res = this.matchFunction(state, s); break;
-		case opcodes.GRAMMAR: res = this.matchGrammar(state, s); break;
-		case opcodes.RULE: res = this.matchRule(state, s); break;
-		case opcodes.CONSTANT: res = this.matchConstant(state, s); break;
-		case opcodes.MATCHTIME: res = this.matchMatchtime(state, s); break;
-		case opcodes.GROUP: res = this.matchGroup(state, s); break;
-		case opcodes.SUBSTITUTE: res = this.matchSubstitute(state, s); break;
-		case opcodes.RANGE: res = this.matchRange(state, s); break;
-		case opcodes.DIFFERENCE: res = this.matchDifference(state, s); break;
-		default:
-			console.error("invalid opcode: "+this.opcode);
-			break;
-	}
-	--state.depth;
-	return res;
-}
-
-
-Pattern.prototype.matchString = function(state, s) {
-	var todo = s.length - state.idx;
-	//console.log(state.indent()+"ms: " + todo + " " + this.v.length, todo >= this.v.length);
-	if(todo >= this.v.length) {
-		//console.log(state.indent()+"matchString:", this.v, s.substring(state.idx, state.idx+this.v.length));
-		for(var i=0; i < this.v.length; ++i) {
-			if(s[i+state.idx] != this.v[i]) return false;
-		}
-		state.idx += this.v.length;
-		return true;
-	}
-	else {
-		//console.log(state.indent()+"ms fail", this.v, state.idx);
-		return false;
-	}
-}
-
-Pattern.prototype.matchNumber = function(state, s) {
-	if(this.v <= 0) {
-		//console.log(state.idx-this.v, s.length);
-		var res = (state.idx-this.v) > s.length;
-		if(res) ++state.idx;
-		return res;
-	}
-	else if(state.idx+this.v <= s.length) {
-		state.idx += this.v;
-		return true;
-	}
-	else {
-		//state.resetPosition(state.idx+this.v);
-		return false;
-	}
-}
-
-Pattern.prototype.matchBool = function(state, s) {
-	return this.v;
-}
-
-Pattern.prototype.matchRep = function(state, s) {
-	var sidx = state.idx;
-	if(this.v.rep > 0) {
-		//console.log(state.indent()+"rep 1:", state.idx);
-		for(var i=0; i < this.v.rep; ++i) {
-			if(!this.v.pattern.match_(state, s)) {
-				state.idx = sidx;
-				//console.log(state.indent()+"rep 1:", state.idx);
-				return false;
-			}
-		}
-		sidx = state.idx;
-		while(this.v.pattern.match_(state, s)) {
-			sidx = state.idx;
-		}
-		state.idx = sidx;
-		//console.log(state.indent()+"rep 1:", state.idx);
-		return true;
-	}
-	else if(this.v.rep == 0) {
-		//console.log(state.indent()+"rep 0:", state.idx);
-		while(this.v.pattern.match_(state, s)) {
-			sidx = state.idx;
-		}
-		state.idx = sidx;
-		//console.log(state.indent()+"rep 0:", state.idx);
-		return true;
-	}
-	else {
-		//console.log(state.indent()+"rep -1:", state.idx);
-		for(var i=0; i < -this.v.rep; ++i) {
-			var bidx = sidx;
-			if(!this.v.pattern.match_(state, s)) {
-				sidx = bidx;
-				break;
-			}
-			sidx = state.idx;
-		}
-		state.idx = sidx;
-		//console.log(state.indent()+"rep -1:", state.idx);
-		return true;
-	}
-}
-
-Pattern.prototype.matchAnd = function(state, s) {
-	//console.log("AND:", this.v.p1.match_(state, s), this.v.p2.match_(state, s));
-	var sidx = state.idx;
-	state.pushCaptures();
-	if(this.v.p1.match_(state, s) && this.v.p2.match_(state, s)) {
-		state.mergeAndPopCaptures(true);
-		return true;
-	}
-	else {
-		state.popCaptures();
-		state.resetPosition(sidx);
-		return false;
-	}
-}
-
-Pattern.prototype.matchOr = function(state, s) {
-	var sidx = state.idx;
-	state.pushCaptures();
-	if(this.v.p1.match_(state, s) || this.v.p2.match_(state, s)) {
-		state.mergeAndPopCaptures(true);
-		return true;
-	}
-	else {
-		state.popCaptures();
-		state.resetPosition(sidx);
-		return false;
-	}
-}
-
-Pattern.prototype.matchDifference = function(state, s) {
-	var sidx = state.idx;
-	//console.log("matchDifference:", state.idx);
-	if(this.v.p1.match_(state, s)) {
-		var sidx2 = state.idx;
-		state.resetPosition(sidx);
-		if(this.v.p2.match_(state, s)) {
-			state.resetPosition(sidx);
-			return false;
-		}
-		else {
-			state.idx = sidx2
-		}
-		return true;
-	}
-	else {
-		state.resetPosition(sidx);
-		return false;
-	}
-}
-
-Pattern.prototype.matchIgnore = function(state, s) {
-	var sidx = state.idx;
-	var res = this.v.match_(state, s);
-	state.resetPosition(sidx);
-	return res;
-}
-
-Pattern.prototype.matchSet = function(state, s) {
-	if(state.idx >= s.length) return false;
-	
-	if(this.v[ s[state.idx] ]) {
-		++state.idx;
-		return true;
-	}
-	else {
-		return false;
-	}
-}
-
-Pattern.prototype.matchRange = function(state, s) {
-	if(state.idx >= s.length) return false;
-	
-	if(this.v.exec(s[state.idx])) {
-		++state.idx;
-		return true;
-	}
-	else {
-		return false;
-	}
-}
-
-Pattern.prototype.matchGrammar = function(state, s) {
-	var root = this.v[0];
-	if(typeof root == "string") {
-		root = this.v[root];
-	}
-	state.env.push(this.v);
-	var sidx = state.idx;
-	var res = root.match_(state, s);
-	state.env.pop();
-	if(!res) {
-		state.resetPosition(sidx);
-	}
-	return res;
-}
-
-Pattern.prototype.matchRule = function(state, s) {
-	var patt = state.env[state.env.length-1][this.v];
-	//console.log(state.indent()+"rule: " + this.v);
-	var sidx = state.idx;
-	
-	if(!patt) throw "rule '"+this.v+"' not found in grammar";
-	
-	if(patt.match_(state, s)) {
-		//console.log(state.indent()+"matchRule:", this.v, true, state.idx);
-		//state.printCaptures();
-		//console.log("\n");
-		return true;
-	}
-	else {
-		state.resetPosition(sidx);
-		//console.log(state.indent()+"matchRule:", this.v, false, state.idx);
-		//state.printCaptures();
-		//console.log("\n");
-		return false;
-	}
-}
-
-Pattern.prototype.matchCapture = function(state, s) {
-	var sidx = state.idx;
-	state.pushCaptures();
-	if(this.v.match_(state, s)) {
-		var eidx = state.idx;
-		//var cap = new Capture(s.substring(sidx, eidx), sidx, eidx);
-		var cap = s.substring(sidx, eidx);
-		state.appendCapture(cap);
-		state.mergeAndPopCaptures(true);
-		return true;
-	}
-	else {
-		state.popCaptures();
-		return false;
-	}
-}
-
-Pattern.prototype.matchPosition = function(state, s) {
-	var cap = state.idx;
-	if(state.substitute) {
-		var cap = new Capture(state.idx, state.idx, state.idx);
-		state.addSubstitution(cap);
-	}
-	else {
-		state.captures.push(state.idx);
-	}
-	return true;
-}
-
-Pattern.prototype.matchTable = function(state, s) {
-	if(state.substitute) console.error("can't have table capture inside substitution");
-	//console.log(state.cindent()+"**matchTable:", state.namedCaptures);
-	var sidx = state.idx;
-	state.pushCaptures();
-	if(this.v.match_(state, s)) {
-		var eidx = state.idx;
-		var res = state.captures
-		state.collectNamedCaptures(res);
-		state.popCaptures();
-		//var cap = new Capture(res, sidx, eidx);
-		var cap = res;
-		state.appendCapture(cap);
-		return true;
-	}
-	else {
-		//console.log(state.indent()+"Ct failed");
-		//state.printCaptures();
-		state.popCaptures();
-		return false;
-	}
-}
-
-Pattern.prototype.matchCstring = function(state, s) {
-	state.pushCaptures();
-	var sidx = state.idx;
-	if(this.v.pattern.match_(state, s)) {
-		var eidx = state.idx;
-		var c = this.v.str;
-		if(state.substitute) {
-			var cap = new Capture(c, sidx, eidx);
-			state.addSubstitution(cap);
-		}
-		else {
-			state.appendCapture(c);
-		}
-		state.mergeAndPopCaptures();
-		return true;
-	}
-	else {
-		state.popCaptures();
-		return false;
-	}
-}
-
-Pattern.prototype.matchFunction = function(state, s) {
-	state.pushCaptures();
-	var sidx = state.idx;
-	if(this.v.pattern.match_(state, s)) {
-		var eidx = state.idx;
-		var c = this.v.f.apply(this, state.captures);
-		if(state.substitute) {
-			var cap = new Capture(c, sidx, eidx);
-			state.addSubstitution(cap);
-		}
-		else {
-			state.appendCapture(c);
-		}
-		state.mergeAndPopCaptures();
-		return true;
-	}
-	else {
-		state.popCaptures();
-		return false;
-	}
-}
-
-Pattern.prototype.matchConstant = function(state, s) {
-	if(state.substitute) {
-		var cap = new Capture(this.v, s.idx, s.idx);
-		state.addSubstitution(cap);
-	}
-	else {
-		//console.log("   Cc:", this.v);
-		state.appendCapture(this.v);
-	}
-	return true;
-}
-
-Pattern.prototype.matchMatchtime = function(state, s) {
-	state.pushCaptures();
-	var sidx = state.idx;
-	if(this.v.pattern.match_(state, s)) {
-		var eidx = state.idx;
-		var args = state.captures
-		args.unshift(s);
-		args.unshift(eidx);
-		args.unshift(sidx);
-		args.unshift(state);
-		state.popCaptures();
-		var res = this.v.f.apply(this, args);
-		if(res) {
-			return true;
-		}
-		else {
-			return false;
-		}
-	}
-	else {
-		state.popCaptures();
-		return false;
-	}
-}
-
-Pattern.prototype.matchGroup = function(state, s) {
-	//console.log(state.cindent()+"__matchGroup:", state.namedCaptures);
-	state.pushCaptures();
-	var sidx = state.idx;
-	if(this.v.pattern.match_(state, s)) {
-		if(state.captures.length <= 0) {
-			var eidx = state.idx;
-			//var cap = new Capture(s.substring(sidx, eidx), sidx, eidx);
-			var cap = s.substring(sidx, eidx);
-			state.appendCapture(cap);
-		}
-		if(this.v.name) {
-			state.nameAndPopCaptures(this.v.name);
-		}
-		else {
-			state.mergeAndPopCaptures(true);
-		}
-		return true;
-	}
-	else {
-		state.popCaptures();
-		return false;
-	}
-}
-
-Pattern.prototype.matchSubstitute = function(state, s) {
-	state.substitute = true;
-	var sidx = state.idx;
-	if(this.v.match_(state, s)) {
-		var eidx = state.idx;
-		var res = state.makeSubstitution(s.substring(sidx, eidx), sidx);
-		state.appendCapture(res);
-		state.substitute = false;
-		return true;
-	}
-	else {
-		state.substitute = false;
-		return false;
-	}
-}
-*/
 
 var M = {
 	P: function(v, opcode) {
 		return new Pattern(v, opcode);
 	},
 	
+	O: function(field, pattern) {
+		return new Pattern({ field:field, pattern:pattern }, opcodes.OBJECT);
+	},
+	
 	S: function(str) {
 		var set = {};
-		for(var i=0; i < str.length; ++i) {
-			set[ str[i] ] = true;
+		if(typeof str == "string") {
+			for(var i=0; i < str.length; ++i) {
+				set[ str[i] ] = true;
+			}
+		}
+		else if(typeof str == "object") {
+			if(str.constructor == Array) {
+				for(var i=0; i < str.length; ++i) {
+					set[ str[i] ] = true;
+				}
+			}
+			else {
+				set = str;
+			}
 		}
 		return new Pattern(set, opcodes.SET);
 	},
@@ -1444,12 +1192,13 @@ var scientific = M.S("eE").and(M.S("-+").rep(-1)).and(fractional);
 var float = M.P("-").rep(-1).and(
 	M.P(".").and(fractional).or(integer.and(M.P(".")).and(fractional.rep(-1)).and(scientific.rep(-1)))
 );
-var stringEscapes = M.P("\\\"").or(M.P("\\\\")).or(M.P("\\b"))
-	.or(M.P("\\f")).or(M.P("\\n")).or(M.P("\\r")).or(M.P("\\t"))
+var stringEscapes = M.S(["\\\"", "\\\\", "\\b", "\\f", "\\n", "\\r", "\\t"]);
+//var stringEscapes = M.P("\\\"").or(M.P("\\\\")).or(M.P("\\b"))
+//	.or(M.P("\\f")).or(M.P("\\n")).or(M.P("\\r")).or(M.P("\\t"))
 	//.or(
 	//	M.P("\\u").and(digit).and(digit).and(digit).and(digit)
 	//);
-	;
+//	;
 var string = M.P('"').and(
 	stringEscapes.or(M.P('"').invert()).rep(0)
 	//M.P('"').invert().rep(0)
@@ -1537,8 +1286,6 @@ var statement_list = (M.V("expression_statement").or(M.V("label_statement"))).an
 
 var patternParser  = M.P({
 	0: "statement_list",
-	//0: "doubleQuoteString",
-	//0: "statement_list",
 	statement_list: Rule(statement_list, "statement_list"),
 	label_statement: Rule(label_statement, "label_statement"),
 	expression_statement: Rule(expression_statement, "expression_statement"),
@@ -1558,7 +1305,7 @@ var patternParser  = M.P({
 	bool: Token(bool, "bool"),
 }).and(-1)
 //.save(__dirname+"/grammar.pattern");
-.eval();
+;//.eval();
 
 
 
