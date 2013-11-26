@@ -1269,7 +1269,7 @@ var statement_list = (M.V("expression_statement").or(M.V("label_statement"))).an
 
 
 var patternParser  = M.P({
-	0: "statement_list",
+	0: ws.and(M.V("statement_list").and(-1).or(M.V("additive_expression").and(-1))),
 	statement_list: Rule(statement_list, "statement_list"),
 	label_statement: Rule(label_statement, "label_statement"),
 	expression_statement: Rule(expression_statement, "expression_statement"),
@@ -1287,7 +1287,7 @@ var patternParser  = M.P({
 	doubleQuoteString: Token(string, "doubleQuoteString"),
 	singleQuoteString: Token(singleQuoteString, "singleQuoteString"),
 	bool: Token(bool, "bool"),
-}).and(-1)
+})
 //.save(__dirname+"/grammar.pattern");
 .eval();
 
@@ -1296,9 +1296,10 @@ var patternParser  = M.P({
 var evalPattern = function(code) {
 	var parser = new patternParser();
 	//console.log(parser);
-	var ast = parser.match(code);
-	if(ast) {
-		console.log(ast);
+	var matched = parser.match(code);
+	//console.log("matched:", matched);
+	if(matched) {
+		//console.log(parser.captures[0]);
 		return parser.captures[0];
 	}
 };
@@ -1321,6 +1322,7 @@ Interpreter.prototype.getCategory = function(name) {
 }
 
 Interpreter.prototype.registerDefinition = function(name, pattern) {
+	console.log("registerDefinition:", name);
 	var def = {
 		name: name,
 		pattern: pattern,
@@ -1330,26 +1332,34 @@ Interpreter.prototype.registerDefinition = function(name, pattern) {
 }
 
 Interpreter.prototype.eval = function(ast) {
-	this.dispatch(ast);
 	var grammar = {};
 	for(var k in M.patterns) {
 		grammar[k] = M.patterns[k];
 	}
 	
-	for(var name in this.definitions) {
-		var def = this.definitions[name];
-		this.currentCategory = def.category;
-		if(def.category == "tokens") {
-			def.match = Token(this.dispatch(def.pattern), name);
-		}
-		else if(def.category == "rules") {
-			def.match = Rule(this.dispatch(def.pattern), name);
-		}
-		else {
-			def.match = this.dispatch(def.pattern);
-		}
-		grammar[name] = def.match;
+	var pattern = this.dispatch(ast);
+	if(ast.rule == "additive_expression") {
+		if(pattern == 1) pattern = M.P(pattern);
+		grammar.root = pattern;
 	}
+	else {
+		for(var name in this.definitions) {
+			var def = this.definitions[name];
+			this.currentCategory = def.category;
+			if(def.category == "tokens") {
+				def.match = Token(this.dispatch(def.pattern), name);
+			}
+			else if(def.category == "rules") {
+				def.match = Rule(this.dispatch(def.pattern), name);
+			}
+			else {
+				def.match = this.dispatch(def.pattern);
+			}
+			console.log("DEF:", def.name, def.pattern, def.match);
+			grammar[name] = def.match;
+		}
+	}
+
 	grammar[0] = "root";
 	var patt = M.P(grammar);
 	return patt;

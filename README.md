@@ -162,3 +162,44 @@ Ct(Cg(P("a"), "first").and(C("b")))
 When __Ct__ collects captures into an object, the object used is an Array.  The enables the length property of the Array to be used to ask how many unnamed captures are in the object.  
 
 ### Pattern DSL ###
+To make composing patterns clearer and more succinct, there is a pattern syntax based on LPEG's operators.  The pattern syntax makes use of all of the functions described above.  All it does is exchange object methods such as .and() for binary operators like '*':
+
+* patt1.and(patt2) -> patt1*patt2
+* patt1.or(patt2) -> patt1+patt2 
+* patt1.rep(N) -> patt1^N
+* patt1.sub(patt2) -> patt1 - patt2
+* patt1.invert() -> 1-patt1	// match a single character but don't match patt1
+
+In addition, for function calls where a string is the only argument the parenthesis are optional:
+
+* P("a") is equivalent to P"a"
+
+The pattern DSL can be used to compile both basic basic rule expressions as well as complex grammars.  The __eval__ function parses a pattern string and returns a pattern.  The returned pattern is just like patterns generated using the functions described above, so it can be intermingled with other, lower level functions.  
+
+```js
+P"a"*P"b" // match "ab"
+```
+
+```js
+C(P"a")*P"b" // match "ab" and produce the capture "a"
+```
+
+Rules for grammars are specified using assignment:
+
+```js
+root = a*b;
+a = P"a";
+b = P"b";
+```
+The above definition creates 3 rules for a grammar.  The definitions can come in any order, so a particular rule can reference a rule defined later without issue.  This is often relied upon since grammars tend to have cycles in their definition.  For the *root* rule above, the variables *a* and *b* are referenced.  Variable names refer to rule definitions are are equivalent to using the __V__ pattern function.  The above pattern in the DSL is equivalent to the following:
+
+```js
+P({
+	0: "root",
+	root: V("a").and(V("b")),
+	a: P("a"),
+	b: P("b")
+})
+```
+
+Notice that the 0-rule for the grammar is automatically set to the name "root".  The root variable has the special designation of being the entry point into the grammar.  It must always be defined.  For patterns defined simply as expressions (i.e. no assignments), the expression is set as the root of the grammar.
