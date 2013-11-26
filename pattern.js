@@ -37,14 +37,6 @@ for(var i=0; i < opnames.length; ++i) {
 	opcodes[i] = name;
 }
 
-/*
-var Capture = function(v, sidx, eidx) {
-	this.v = v;
-	this.sidx = sidx;
-	this.eidx = eidx;
-}
-*/
-
 var CodeState = function() {
 	this.depth = 1;
 	this.uid = 0;
