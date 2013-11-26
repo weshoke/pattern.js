@@ -15,6 +15,7 @@ The set of pattern generating functions closely follows the LPEG interface.  The
 * P: Matches literals or character sequences
 * S: Matches a set of characters
 * R: Matches a range of characters
+* O: Matches object fields
 
 The __P__ pattern can take a range of different argument types.  Depending on the argument type, __P__ will have slightly different behavior:
 
@@ -27,9 +28,11 @@ The __P__ pattern can take a range of different argument types.  Depending on th
 The __S__ pattern matches a set of characters.  The characters are given by a string argument:
 
 * S(string): Match any character in __string__
+* S(object): Match any character in __object__'s keys, keys can only be single characters
 
 ```js
 S("abc") // match 'a', 'b', or 'c'
+S({A:true, B:true, C:true}) // match 'A', 'B', or 'C
 ```
 
 The __R__ pattern matches ranges of characters.  The ranges are specified by two character strings.
@@ -40,6 +43,33 @@ The __R__ pattern matches ranges of characters.  The ranges are specified by two
 ```js
 R("az") // match lower-case letters
 R(["az", "AZ"]) // match upper- and lower-case letters
+```
+
+The __O__ pattern matches object fields.  It enables patterns to be matched again tree structures such as JSON object hierarchies or ASTs.  __O__ takes one argument specifying the key to lookup in the object and a second argument specifying a pattern to match against the looked up value.
+
+```js
+O("key", P("value")) // match {key:"value"}
+O(P("k"), P("v")) // match an of the fields in {k:"v", key:"v", ke:"value"}
+```
+
+The first argument to __O__ can either be a string literal or a pattern.  If it's a literal, the field is directly looked up in the object.  This is analagous to the "member expression" syntax in javascript:
+
+```js
+object.key // member expression
+```
+
+If the first argument is a pattern, then the pattern is matched against all of the object's keys.  If a key matches, then the value is looked up in the object and matched against the value pattern.  This is analagous to the javascript "member lookup expression" syntax:
+
+```js
+object[key] // member lookup expression
+```
+
+The __O__ function does not advance the current index of the parser.  It matches if any match against an object's value is successful.  For cases where the first argument is a pattern and multiple values can be matched, if any of the values match, then the entire match will be successful.
+
+Captures (see [Captures]) can be applied to any pattern given as an argument to __O__ and are treated no differently.  As a result, the keys that lookup values producing successful matches can be captured during the matching process.  For example:
+
+```js
+O(C(P("k")), P("v"))  // will produce captures for any key starting with a 'k' whose value starts with a 'v'
 ```
 
 ### Pattern Operators ###
