@@ -23,7 +23,7 @@ The __P__ pattern can take a range of different argument types.  Depending on th
 * P(false): Never matches
 * P(n) where n>=0: Match exactly *n* characters
 * P(-n) where n>0: Match only if there are less than *n* characters left
-* P(object): Create a grammar from *object*, see [Grammars][#Grammars]
+* P(object): Create a grammar from *object*, see [Grammars](#Grammars)
 
 The __S__ pattern matches a set of characters.  The characters are given by a string argument:
 
