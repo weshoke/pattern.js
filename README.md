@@ -37,8 +37,8 @@ S({A:true, B:true, C:true}) // match 'A', 'B', or 'C
 
 The __R__ pattern matches ranges of characters.  The ranges are specified by two character strings.
 
-* R(string): Match the range of characters __string[0]__ to __string[1]__
-* R(array): Match characters in the ranges provided by __array__
+* R(string): Match the range of characters *string[0]* to *string[1]*
+* R(array): Match characters in the ranges provided by *array*
 
 ```js
 R("az") // match lower-case letters
