@@ -5,9 +5,25 @@ A PEG-based pattern matching parser generator
 
 pattern.js iherits ideas from [LPEG](http://www.inf.puc-rio.br/~roberto/lpeg/) and [OMeta](http://tinlizzie.org/ometa/).  The interface largely follows that of LPEG, differing mainly where JavaScript and Lua diverge in terms of functionality. pattern.js can be used to generate string parsers as well as match patterns within hierarchical data structures.
 
-
 ## Using pattern.js ##
-Pattern.js has two interfaces: a high-level grammar-oriented interface and a low-level pattern composition interface.  The high-level interface is intended for constructing parsers that produce abstract syntax trees but can also be used to construct simple patterns with a clearer syntax than is possible directly in JavaScript using the low-level interface.
+Pattern.js is a library of composable pattern generating functions for processing strings and hierarchical data structures.  It produces patterns that can be used to match against input strings and objects.  In addition, pattern.js contains a mini-DSL for composing complex patterns and grammars in a succint syntax (see [Pattern DSL](#DSL)).
+
+#### Bird's Eye View ####
+Patterns in pattern.js get created in stages.  At first, patterns created are retained as composable units.  This enables patterns to be created incrementally instead of all at once, making pattern creation a more modular process.  To actually use a pattern to process anything, they need to be evaluated and instantiated as a parser object.  The workflow looks like this:
+
+1. Compose pattern
+2. Evaluate pattern
+3. Instantiate parser from evaluated pattern
+4. Use parser to process input
+
+In Javascript, a typical sequence might look like:
+
+```js
+var pattern = P("a").and("b");	 // 1. Compose pattern
+var Parser = pattern.eval();	 // 2. Evaluate pattern, creating a Parser class
+var parser = new Parser();		 // 3. Instantiate a Parser
+console.log(parser.match("ab")); // 4. Process input (matches "ab")
+```
 
 ### Pattern Primitives ###
 The set of pattern generating functions closely follows the LPEG interface.  There are a handful of primitive pattern types and operators to combine primitive patterns into more complex composite structures.  The primitive pattern type are:
@@ -161,7 +177,7 @@ Ct(Cg(P("a"), "first").and(C("b")))
 
 When __Ct__ collects captures into an object, the object used is an Array.  The enables the length property of the Array to be used to ask how many unnamed captures are in the object.  
 
-### Pattern DSL ###
+### <a name="DSL">Pattern DSL</a> ###
 To make composing patterns clearer and more succinct, there is a pattern syntax based on LPEG's operators.  The pattern syntax makes use of all of the functions described above.  All it does is exchange object methods such as .and() for binary operators like '*':
 
 * patt1.and(patt2) → patt1*patt2
