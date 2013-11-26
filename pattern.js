@@ -172,6 +172,7 @@ CodeState.prototype.popRes = function() {
 
 CodeState.prototype.pushRules = function(rules, name) {
 	name = name || "grammar";
+	//console.log("***> state.pushRules:", name);
 	this.grammarNameStack.push(this.currentGrammarName);
 	this.currentGrammarName = this.makeUID(name);
 	
@@ -200,10 +201,13 @@ CodeState.prototype.popRules = function(name, res) {
 	this.defs = this.grammarStack.pop();
 	this.rules = this.ruleStack.pop();
 	this.currentGrammarName = this.grammarNameStack.pop();
+	
+	//console.log("<*** state.popRules:", name);
 }
 
 CodeState.prototype.getRule = function(name) {
 	if(DEBUG) console.log(this.indent()+"*** getRule", this.ruleStack.length);
+	//console.log(this.indent()+"*** getRule", name, this.ruleStack.length);
 	var pattern = this.rules[name];
 	var grammar = this.currentGrammarName;
 	if(this.currentGrammarName.substring(0, 7) != "grammar") {
@@ -448,7 +452,7 @@ Pattern.prototype.save = function(filename) {
 
 Pattern.prototype.match_ = function(state, s) {
 	++state.depth;
-	//console.log(state.indent()+(s[state.idx]), state.idx, opcodeNames[this.opcode]);
+	//console.log("--> match_:", opcodes[this.opcode]);
 	
 	var res;
 	switch(this.opcode) {
@@ -479,6 +483,7 @@ Pattern.prototype.match_ = function(state, s) {
 			break;
 	}
 	--state.depth;
+	//console.log("<-- match_:", opcodes[this.opcode]);
 	return res;
 }
 
@@ -783,27 +788,6 @@ Pattern.prototype.matchRep = function(state, s) {
 	
 	var sidx = state.makeUID("sidx");
 	state.append(["var "+sidx+" = this.idx;"]);
-
-	/*
-	var rule = undefined;
-	if(!state.getRep(this.v.pattern)) {
-		// Generate the repeated rule
-		var depth = state.depth;
-		state.depth = 1;
-		rule = state.pushRules({}, "rep");
-			state.pushRes();
-				var res = state.res;
-				state.appendResDeclaration();
-				this.v.pattern.match_(state, s);
-			state.popRes();
-		state.popRules(rule, res);
-		state.depth = depth;
-		state.registerRep(rule, this.v.pattern);
-	}
-	else {
-		rule = state.getRep(this.v.pattern);
-	}
-	*/
 	var rule = this.getPatternRule(state, s, this.v.pattern);
 	
 	if(this.v.rep > 0) {
@@ -1259,7 +1243,7 @@ var literal = M.V("number").or(M.V("doubleQuoteString")).or(M.V("singleQuoteStri
 var subexpression = M.P("(").and(ws).and(M.V("additive_expression")).and(ws).and(M.P(")"));
 var primary_value = M.V("subexpression").or(M.V("identifier")).or(M.V("literal"));
 var function_args = (M.P("(").and(ws).and(
-	(M.V("primary_value").and(ws).and( M.P(",").and(ws).and(M.V("primary_value").and(ws)).rep(0) )).rep(-1)
+	(M.V("additive_expression").and(ws).and( M.P(",").and(ws).and(M.V("additive_expression").and(ws)).rep(0) )).rep(-1)
 ).and(M.P(")"))).or(M.V("singleQuoteString").or(M.V("doubleQuoteString")));
 var function_call = M.V("identifier").and(M.V("function_args")).or(M.V("primary_value"));
 
@@ -1360,6 +1344,9 @@ Interpreter.prototype.eval = function(ast) {
 		else if(def.category == "rules") {
 			def.match = Rule(this.dispatch(def.pattern), name);
 		}
+		else {
+			def.match = this.dispatch(def.pattern);
+		}
 		grammar[name] = def.match;
 	}
 	grammar[0] = "root";
@@ -1436,8 +1423,15 @@ Interpreter.prototype.assignment_expression = function(ast) {
 Interpreter.prototype.additive_expression = function(ast) {
 	var res = undefined;
 	for(var i=0; i < ast.length; i += 2) {
-		if(!res) res = this.makePattern(ast[i]);
-		else res = res.or(this.makePattern(ast[i]));
+		if(!res) {
+			res = this.makePattern(ast[i]);
+		}
+		else {
+			if(res == 1) res = M.P(res);
+		
+			if(ast[i-1] == '+') res = res.or(this.makePattern(ast[i]));
+			else res = res.sub(this.makePattern(ast[i]));
+		}
 	}
 	return res;
 }
@@ -1461,6 +1455,11 @@ Interpreter.prototype.and_expression = function(ast) {
 Interpreter.prototype.repetition_expression = function(ast) {
 	if(ast.length >= 2) {
 		var patt = this.makePattern(ast[0]);
+		if(patt.opcode == opcodes.GRAMMAR) {
+			console.log(ast);
+			printAST(ast);
+			error("");
+		}
 		var n = this.makePattern(ast[2]);
 		if(this.currentCategory == "rules") {
 			return patt.and(ws).rep(n);
