@@ -346,6 +346,7 @@ CodeState.prototype.generate = function() {
 
 CodeState.prototype.create = function() {
 	var matchCode = this.generate();
+	//console.log(matchCode);
 	if(DEBUG) console.log(matchCode);
 	var code = [matchCode].concat(["return Parser;"]).join("\n");
 	return (new Function(code))();;
@@ -1321,7 +1322,6 @@ Interpreter.prototype.getCategory = function(name) {
 }
 
 Interpreter.prototype.registerDefinition = function(name, pattern) {
-	console.log("registerDefinition:", name);
 	var def = {
 		name: name,
 		pattern: pattern,
@@ -1332,9 +1332,6 @@ Interpreter.prototype.registerDefinition = function(name, pattern) {
 
 Interpreter.prototype.eval = function(ast) {
 	var grammar = {};
-	for(var k in M.patterns) {
-		grammar[k] = M.patterns[k];
-	}
 	
 	var pattern = this.dispatch(ast);
 	if(ast.rule == "additive_expression") {
@@ -1354,7 +1351,6 @@ Interpreter.prototype.eval = function(ast) {
 			else {
 				def.match = this.dispatch(def.pattern);
 			}
-			console.log("DEF:", def.name, def.pattern, def.match);
 			grammar[name] = def.match;
 		}
 	}
@@ -1373,6 +1369,10 @@ Interpreter.prototype.makePattern = function(ast) {
 			return ast[0].substring(1, ast[0].length-1);
 		}
 		else if(ast.token == "identifier") {
+			if(M.patterns[ ast[0] ]) {
+				var name = ast[0];
+				this.registerDefinition(name, M.patterns[name]);
+			}
 			return M.V(ast[0]);
 		}
 		else if(ast.token == "number") {
