@@ -134,7 +134,7 @@ P("a").and(Cc("constant")) // match "a" and produce the capture "constant"
 
 __Cp__ produces the current position of the pattern matcher as a capture
 
-** Cp(): create a capture with value position
+* Cp(): create a capture with value position
 
 ```js
 // match "a" and produce the capture with value '1' 
