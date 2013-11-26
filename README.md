@@ -110,13 +110,13 @@ At its simplest, a capture simply takes the part of the input that a pattern mat
 * C(patt): Capture the value matched by patt
 
 ```js
-C(P("a").and(P("b))	// match "ab" and produce the captured value "a"
+C(P("a").and(P("b"))	// match "ab" and produce the captured value "a"
 ```
 
 Captures can be nested just like other patterns.  In such cases, nested captured values will be generated.  For example:
 
 ```js
-C(C(P("a").and(P("b))) // match "ab" and produce the captures "ab" and "a"
+C(C(P("a").and(P("b"))) // match "ab" and produce the captures "ab" and "a"
 ```
 
 In addition to the basic __C__ capture function, there are a couple of other basic capture functions:
