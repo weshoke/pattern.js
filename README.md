@@ -66,7 +66,7 @@ object[key] // member lookup expression
 
 The __O__ function does not advance the current index of the parser.  It matches if any match against an object's value is successful.  For cases where the first argument is a pattern and multiple values can be matched, if any of the values match, then the entire match will be successful.
 
-Captures (see [Captures](Captures)) can be applied to any pattern given as an argument to __O__ and are treated no differently.  As a result, the keys that lookup values producing successful matches can be captured during the matching process.  For example:
+Captures (see [Captures](#Captures)) can be applied to any pattern given as an argument to __O__ and are treated no differently.  As a result, the keys that lookup values producing successful matches can be captured during the matching process.  For example:
 
 ```js
 // will produce captures for any key starting with a 'k' 
