@@ -127,7 +127,7 @@ In addition to the basic __C__ capture function, there are a couple of other bas
 
 __Cc__ produces a constant value. It always matches successfully.
 
-* Cc(constant): create a capture with value __constant__
+* Cc(constant): create a capture with value *constant*
 
 ```js
 P("a").and(Cc("constant")) // match "a" and produce the capture "constant"
