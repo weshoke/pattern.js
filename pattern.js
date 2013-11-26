@@ -19,7 +19,7 @@ var codegen_debug = function(v) {
 
 // setup
 var opnames = [
-	"STRING", "NUMBER", "BOOL", "OBJECT",
+	"STRING", "NUMBER", "BOOL", "OBJECT", "PARENT",
 	"SET", "RANGE",
 	"AND", "OR", "REP", "DIFFERENCE",
 	"IGNORE",
@@ -233,6 +233,8 @@ CodeState.prototype.generate = function() {
 		"	this.captureStack = [];",
 		"	this.namedCaptures = {};",
 		"	this.namedCaptureStack = [];",
+		"	this.objects = [];",
+		"	this.objectStack = [];",
 	];
 	for(var k in this.statics) {
 		var code = this.statics[k];
@@ -326,6 +328,40 @@ CodeState.prototype.generate = function() {
 		codegen_debug("	console.log('prependCapture', v);"),
 		"	this.captures.unshift(v);",
 		"}",
+		"this.pushObject = function(v) {",
+		"	this.objects.push(v);",
+		"}",
+		"this.popObject = function() {",
+		"	return this.objects.pop();",
+		"}",
+		"this.pushObjects = function() {",
+		"	this.objectStack.push(this.objects);",
+		"	this.objects = [];",
+		"}",
+		"this.popObjects = function() {",
+		"	this.objects = this.objectStack.pop();",
+		"}",
+		"this.getAndPushObject = function(s, idx) {",
+		"	if(idx < 0) {",
+		"		var objects = this.objects;",
+		"		while(objects.length > -idx) {",
+		"			idx += objects.length;",
+		"			var offset = objects.offset",
+		"			objects = objects.source;",
+		"			if(!objects) return undefined;",
+		"			idx += offset-objects.length-1;",
+		"		}",
+		"		var lastObjects = this.objects;",
+		"		this.pushObjects();",
+		"		this.objects.source = objects;",
+		"		this.objects.offset = objects.length+idx;",
+		"		lastObjects.push(s);",
+		"		var res = objects[this.objects.offset];",
+		"		this.pushObject(res);",
+		"		return res;",
+		"	}",
+		"	return undefined",
+		"}",
 		"this.resetCaptures = function(v) {",
 		"	this.captures = [];",
 		"}",
@@ -335,6 +371,8 @@ CodeState.prototype.generate = function() {
 		"	this.captureStack = [];",
 		"	this.namedCaptures = {};",
 		"	this.namedCaptureStack = [];",
+		"	this.objects = [];",
+		"	this.objectStack = [];",
 		"}",
 	];
 	code = code.concat(body);
@@ -460,6 +498,7 @@ Pattern.prototype.match_ = function(state, s) {
 		case opcodes.NUMBER: res = this.matchNumber(state, s); break;
 		case opcodes.BOOL: res = this.matchBool(state, s); break;
 		case opcodes.OBJECT: res = this.matchObject(state, s); break;
+		case opcodes.PARENT: res = this.matchParent(state, s); break;
 		case opcodes.SET: res = this.matchSet(state, s); break;
 		case opcodes.RANGE: res = this.matchRange(state, s); break;
 		case opcodes.AND: res = this.matchAnd(state, s); break;
@@ -499,6 +538,7 @@ Pattern.prototype.matchString = function(state, s) {
 	
 	var string = state.createStatic("string", "'"+v+"'");
 	var i = state.makeUID("i");
+	
 	var code = [
 		"// Match "+string,
 		"if(s.length-this.idx >= "+length+") {",
@@ -558,9 +598,8 @@ Pattern.prototype.matchBool = function(state, s) {
 }
 
 Pattern.prototype.matchObject = function(state, s) {
-	if(DEBUG) console.log(state.indent()+"matchBool");
+	if(DEBUG) console.log(state.indent()+"matchObject");
 	
-	var prevS = state.makeUID("prevS");
 	if(typeof this.v.field == "object") {
 		var rule = this.getPatternRule(state, s, this.v.field);
 		var k = state.makeUID("k");
@@ -595,7 +634,7 @@ Pattern.prototype.matchObject = function(state, s) {
 			"		var "+namedKeyCaptures+" = this.namedCaptures;",
 			"		this.popCaptures();",
 			"		if("+tmp+") {",
-			"		var "+prevS+" = s;",
+			"			this.pushObject(s);",
 			//"			console.log(this.captures);",
 			"			s = s["+k+"];",
 			//"			console.log("+k+");",
@@ -611,11 +650,9 @@ Pattern.prototype.matchObject = function(state, s) {
 		state.append([
 			"				this.idx = "+sidx+";",
 			"			}",
-			//"			console.log('matched:', "+state.res+");",
-			"			s = "+prevS+";",
+			"			s = this.popObject();",
 			"		}",
 			"		if("+state.res+") {",
-			//"			console.log("+keyCaptures+", "+cidx+");",
 			"			this.mergeCapturesAtIndex("+cidx+", "+keyCaptures+", "+namedKeyCaptures+");",
 			"		}",
 			"		"+res+" = "+res+"||"+state.res+";",
@@ -630,21 +667,56 @@ Pattern.prototype.matchObject = function(state, s) {
 		]);
 	}
 	else {
+		var sidx = state.makeUID("sidx");
+		
 		state.append([
 			"// Match object '"+this.v.field+"'",
 			//"console.log('\\ndirect "+this.v.field+":', s, typeof s);",
 			"if(typeof s === 'object' && s !== null) {",
-			"	var "+prevS+" = s;",
+			//"	console.log('"+this.v.field+"', s.type);",
+			"	this.pushObject(s)",
 			"	s = s['"+this.v.field+"'];",
-			"	if(s !== undefined) {"
+			"	if(s !== undefined) {",
+			"		var "+sidx+" = this.idx;",
+			"		this.idx = 0"
 		]);
 		state.depth += 2;
 		this.v.pattern.match_(state, s);
 		state.depth -= 2;
 		state.append([
+			"		this.idx = "+sidx+";",
 			"	}",
-			"	s = "+prevS+";",
+			"	s = this.popObject();",
 			"}"
+		]);
+	}
+}
+
+Pattern.prototype.matchParent = function(state, s) {
+	if(DEBUG) console.log(state.indent()+"matchParent");
+	
+	if(this.v.idx == 0) {
+		state.append([
+			"// Match parent '"+this.v.idx+"'",
+			state.res+" = true;",
+		]);
+	}
+	else {
+		var o = state.makeUID("o");
+		state.append([
+			"// Match parent '"+this.v+"'",
+			"var "+o+" = this.getAndPushObject(s, "+this.v.idx+");",
+			"if("+o+" !== undefined) {",
+			"	s = "+o+";",
+		]);
+		
+		state.depth += 1;
+		this.v.pattern.match_(state, s);
+		state.depth -= 1;
+		
+		state.append([
+			"	s = this.popObjects();",
+			"}",
 		]);
 	}
 }
@@ -970,7 +1042,12 @@ Pattern.prototype.matchCapture = function(state, s) {
 		"	}",
 		"	else if(typeof s == 'object') {",
 		"		if(s.constructor === Array) {",
-		"			"+cap+" = s.slice("+sidx+", this.idx);",
+		"			if("+sidx+" === this.idx) {",
+		"				"+cap+" = s;",
+		"			}",
+		"			else {",
+		"				"+cap+" = s.slice("+sidx+", this.idx);",
+		"			}",
 		"		}",
 		"		else {",
 		"			"+cap+" = s;",
@@ -1067,6 +1144,12 @@ var M = {
 	
 	O: function(field, pattern) {
 		return new Pattern({ field:field, pattern:pattern }, opcodes.OBJECT);
+	},
+	
+	Op: function(idx, pattern) {
+		assert(typeof idx === "number", "Op with one argument must be a number");
+		assert(idx <= 0, "numeric arguments to Op must be <= 0");
+		return new Pattern({idx:idx, pattern:pattern}, opcodes.PARENT);
 	},
 	
 	S: function(str) {
