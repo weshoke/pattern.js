@@ -108,7 +108,7 @@ When a pattern is matching some input string or object, it can save and process 
 #### Basic Captures ####
 At its simplest, a capture simply takes the part of the input that a pattern matches and saves it.  If the pattern being capture doesn't match, then no capture is produced.  The basic capture function is __C__:
 
-* C(patt): Capture the value matched by patt
+* C(patt): Capture the value matched by *patt*
 
 ```js
 C(P("a").and(P("b"))	// match "ab" and produce the captured value "a"
