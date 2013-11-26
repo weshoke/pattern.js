@@ -1298,6 +1298,7 @@ var evalPattern = function(code) {
 	//console.log(parser);
 	var ast = parser.match(code);
 	if(ast) {
+		console.log(ast);
 		return parser.captures[0];
 	}
 };

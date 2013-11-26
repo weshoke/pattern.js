@@ -161,6 +161,4 @@ Ct(Cg(P("a"), "first").and(C("b")))
 
 When __Ct__ collects captures into an object, the object used is an Array.  The enables the length property of the Array to be used to ask how many unnamed captures are in the object.  
 
-### High-Level Interface ###
-
-### Low-Level Interface ###
+### Pattern DSL ###
