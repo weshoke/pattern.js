@@ -19,10 +19,17 @@ Patterns in pattern.js get created in stages.  At first, patterns created are re
 In Javascript, a typical sequence might look like:
 
 ```js
-var pattern = P("a").and("b");	 // 1. Compose pattern
-var Parser = pattern.eval();	 // 2. Evaluate pattern, creating a Parser class
-var parser = new Parser();		 // 3. Instantiate a Parser
-console.log(parser.match("ab")); // 4. Process input (matches "ab")
+var pattern = P("a").and("b");	// 1. Compose pattern
+var Parser = pattern.eval();	// 2. Evaluate pattern, creating a Parser class
+var parser = new Parser();		// 3. Instantiate a Parser
+parser.match("ab");				// 4. Process input (matches "ab")
+```
+Parsers are stateful objects, tracking information about the parsing process as they match input.  In order to reuse a parser, it must first be reset:
+
+```js
+parser.match("ab");	
+parser.reset();
+parser.match("abc");
 ```
 
 ### Pattern Primitives ###

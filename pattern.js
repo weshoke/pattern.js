@@ -337,6 +337,13 @@ CodeState.prototype.generate = function() {
 		"this.resetCaptures = function(v) {",
 		"	this.captures = [];",
 		"}",
+		"this.reset = function() {",
+		"	this.idx = 0;",
+		"	this.captures = [];",
+		"	this.captureStack = [];",
+		"	this.namedCaptures = {};",
+		"	this.namedCaptureStack = [];",
+		"}",
 	];
 	code = code.concat(body);
 	code.push("}");
