@@ -340,11 +340,12 @@ CodeState.prototype.generate = function() {
 		"}",
 		"this.popObjects = function() {",
 		"	this.objects = this.objectStack.pop();",
+		"	return this.popObject();",
 		"}",
 		"this.getAndPushObject = function(s, idx) {",
 		"	if(idx < 0) {",
 		"		var objects = this.objects;",
-		"		while(objects.length > -idx) {",
+		"		while(objects.length < -idx) {",
 		"			idx += objects.length;",
 		"			var offset = objects.offset",
 		"			objects = objects.source;",
@@ -704,7 +705,7 @@ Pattern.prototype.matchParent = function(state, s) {
 	else {
 		var o = state.makeUID("o");
 		state.append([
-			"// Match parent '"+this.v+"'",
+			"// Match parent '"+this.v.idx+"'",
 			"var "+o+" = this.getAndPushObject(s, "+this.v.idx+");",
 			"if("+o+" !== undefined) {",
 			"	s = "+o+";",

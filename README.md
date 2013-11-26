@@ -39,6 +39,7 @@ The set of pattern generating functions closely follows the LPEG interface.  The
 * S: Matches a set of characters
 * R: Matches a range of characters
 * O: Matches object fields
+* Op: Matches parent objects
 
 The __P__ pattern can take a range of different argument types.  Depending on the argument type, __P__ will have slightly different behavior:
 
@@ -95,6 +96,20 @@ Captures (see [Captures](#Captures)) can be applied to any pattern given as an a
 // will produce captures for any key starting with a 'k' 
 // whose value starts with a 'v'
 O(C(P("k")), P("v"))
+```
+
+The __Op__ function complements the __O__ function.  While __O__ traverses down a hiearchy, __Op__ traverses up a hiearchy.  It makes parent objects the subject of matching.
+
+* Os(offset): Where offset is 0, matches the current subject
+* Os(offset, pattern): Traverse *offset* steps up the hierarchy and apply __pattern__ to the result
+
+Offset must be either 0 or a negative number.  If 0, it simply grabs the current object and no pattern is needed.  If the offset goes beyond the top of the hiearchy, it will fail to match.
+
+```js
+// match {key: {another:"value"} } and produce {another:"value"} as a capture
+O("key", C(Op(0))) 
+// match {key: {another:"value"} } and produce {another:"value"} as a capture
+O("key", O("another", Op(-1, C(Op(0)))))
 ```
 
 ### Pattern Operators ###
