@@ -164,11 +164,11 @@ When __Ct__ collects captures into an object, the object used is an Array.  The 
 ### Pattern DSL ###
 To make composing patterns clearer and more succinct, there is a pattern syntax based on LPEG's operators.  The pattern syntax makes use of all of the functions described above.  All it does is exchange object methods such as .and() for binary operators like '*':
 
-* patt1.and(patt2) -> patt1*patt2
-* patt1.or(patt2) -> patt1+patt2 
-* patt1.rep(N) -> patt1^N
-* patt1.sub(patt2) -> patt1 - patt2
-* patt1.invert() -> 1-patt1	// match a single character but don't match patt1
+* patt1.and(patt2) → patt1*patt2
+* patt1.or(patt2) → patt1+patt2 
+* patt1.rep(N) → patt1^N
+* patt1.sub(patt2) → patt1 - patt2
+* patt1.invert() → 1-patt1	// match a single character but don't match patt1
 
 In addition, for function calls where a string is the only argument the parenthesis are optional:
 
