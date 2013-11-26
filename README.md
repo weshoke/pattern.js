@@ -84,7 +84,7 @@ Pattern operators transform and compose pattern primitives and composites.  The 
 * sub(p1, p2): set difference, matches only if __p1__ matches and __p2__ *doesn't* match
 * invert(p): set inversion, matches only if __p__ *doesn't* match
 
-### Grammars ###
+### Grammars [Grammars] ###
 In addition to the basic operators, patterns can be composed into inter-dependent rule networks, forming a grammar.  Grammars are composed of rule definitions where each definition is a pattern.  Rule definitions can reference other named rules through the rule operator __V__.  __V__ references grammar rules by name and behaves just like other pattern primitives.
 
 * V(name): Matches pattern __name__ defined in a grammar
