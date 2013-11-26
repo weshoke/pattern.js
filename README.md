@@ -66,7 +66,7 @@ object[key] // member lookup expression
 
 The __O__ function does not advance the current index of the parser.  It matches if any match against an object's value is successful.  For cases where the first argument is a pattern and multiple values can be matched, if any of the values match, then the entire match will be successful.
 
-Captures (see [Captures]) can be applied to any pattern given as an argument to __O__ and are treated no differently.  As a result, the keys that lookup values producing successful matches can be captured during the matching process.  For example:
+Captures (see [Captures](Captures)) can be applied to any pattern given as an argument to __O__ and are treated no differently.  As a result, the keys that lookup values producing successful matches can be captured during the matching process.  For example:
 
 ```js
 // will produce captures for any key starting with a 'k' 
@@ -101,6 +101,50 @@ P({
 ```
 
 In the above grammar there are three rules defined: *sequence*, *A*, and *B*.  The entry point for the grammar or "root rule" is indicated in the field __0__.  The value of __0__ can be either a name or a pattern.  Here, it names *sequence* as the entry point.  *sequence* in turn refers to rules *A* and *B*.
+
+### <a name="Captures">Captures</a> ###
+When a pattern is matching some input string or object, it can save and process parts of the input using captures.  Captures are useful for collecting important parts of the input and building useful data structures out of them.  For example, a parser might construct an AST from an input string using captures.
+
+At its simplest, a capture simply takes the part of the input that a pattern matches and saves it.  If the pattern being capture doesn't match, then no capture is produced.  The basic capture function is __C__:
+
+* C(patt): Capture the value matched by patt
+
+```js
+C(P("a").and(P("b))	// match "ab" and produce the captured value "a"
+```
+
+Captures can be nested just like other patterns.  In such cases, nested captured values will be generated.  For example:
+
+```js
+C(C(P("a").and(P("b))) // match "ab" and produce the captures "ab" and "a"
+```
+
+In addition to the basic __C__ capture function, there are a couple of other basic capture functions:
+
+* Cc: capture a constant value
+* Cp: capture the current position of the pattern matcher
+
+__Cc__ produces a constant value. It always matches successfully.
+
+```js
+Cc(constant) // create a capture with value __constant__
+```
+
+```js
+P("a").and(Cc("constant")) // match "a" and produce the capture "constant"
+```
+
+__Cp__ produces the current position of the pattern matcher as a capture
+
+```js
+Cp() // create a capture with value position
+```
+
+```js
+// match "a" and produce the capture with value '1' 
+// (the position in the pattern where Cp was encountered
+P("a").and(Cp()) 
+```
 
 ### High-Level Interface ###
 
