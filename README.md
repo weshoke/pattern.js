@@ -69,7 +69,9 @@ The __O__ function does not advance the current index of the parser.  It matches
 Captures (see [Captures]) can be applied to any pattern given as an argument to __O__ and are treated no differently.  As a result, the keys that lookup values producing successful matches can be captured during the matching process.  For example:
 
 ```js
-O(C(P("k")), P("v"))  // will produce captures for any key starting with a 'k' whose value starts with a 'v'
+// will produce captures for any key starting with a 'k' 
+// whose value starts with a 'v'
+O(C(P("k")), P("v"))
 ```
 
 ### Pattern Operators ###
