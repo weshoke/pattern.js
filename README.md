@@ -126,9 +126,7 @@ In addition to the basic __C__ capture function, there are a couple of other bas
 
 __Cc__ produces a constant value. It always matches successfully.
 
-```js
-Cc(constant) // create a capture with value __constant__
-```
+* Cc(constant): create a capture with value __constant__
 
 ```js
 P("a").and(Cc("constant")) // match "a" and produce the capture "constant"
@@ -136,9 +134,7 @@ P("a").and(Cc("constant")) // match "a" and produce the capture "constant"
 
 __Cp__ produces the current position of the pattern matcher as a capture
 
-```js
-Cp() // create a capture with value position
-```
+** Cp(): create a capture with value position
 
 ```js
 // match "a" and produce the capture with value '1' 
